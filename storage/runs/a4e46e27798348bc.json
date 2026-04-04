@@ -1,0 +1,18 @@
+{
+  "run_id": "a4e46e27798348bc",
+  "agent_id": "b627aa770739",
+  "status": "failed",
+  "current_node": "1",
+  "logs": [
+    {
+      "timestamp": "2026-03-15T12:09:37.078420",
+      "node_id": "1",
+      "message": "Executing tool: get_news",
+      "level": "info"
+    }
+  ],
+  "output_data": null,
+  "error": "Tool execution failed (exit 1): Traceback (most recent call last):\n  File \"/var/folders/qm/4lb1zfx100zb28g9y38wq6mm0000gn/T/tmp0637l0qr.py\", line 33, in <module>\nTypeError: 'NoneType' object is not callable",
+  "started_at": "2026-03-15T12:09:37.076267",
+  "completed_at": "2026-03-15T12:09:37.127111"
+}

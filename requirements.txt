@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+httpx
+pydantic
+pydantic-settings
+python-multipart
+sse-starlette
+langgraph
+langchain-ollama
+langchain-core
+beautifulsoup4
+requests
+aiofiles
+eval_type_backport
+pypdf

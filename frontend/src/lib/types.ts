@@ -1,0 +1,94 @@
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  parameters: Record<string, any>;
+  code: string;
+  filename: string;
+}
+
+export interface FlowNode {
+  id: string;
+  label: string;
+  type: "tool_call" | "llm_call" | "condition" | "start" | "end";
+  tool_name?: string;
+  prompt_template?: string;
+}
+
+export interface FlowEdge {
+  source: string;
+  target: string;
+  condition?: string;
+}
+
+export interface FlowDefinition {
+  nodes: FlowNode[];
+  edges: FlowEdge[];
+  entry_node: string;
+}
+
+export interface AgentDefinition {
+  id: string;
+  name: string;
+  description: string;
+  system_prompt: string;
+  model: string;
+  tools: ToolDefinition[];
+  flow?: FlowDefinition;
+  status: "draft" | "ready" | "error";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RunLog {
+  timestamp: string;
+  node_id: string;
+  message: string;
+  level: string;
+}
+
+export interface RunResult {
+  run_id: string;
+  agent_id: string;
+  status: "pending" | "running" | "completed" | "failed" | "cancelled";
+  current_node?: string;
+  logs: RunLog[];
+  output_data?: any;
+  error?: string;
+  started_at: string;
+  completed_at?: string;
+}
+
+export interface BuilderMessage {
+  role: "user" | "assistant";
+  content: string;
+  artifacts?: {
+    system_prompt?: string;
+    tools?: ToolDefinition[];
+    flow?: FlowDefinition;
+  };
+}
+
+export interface OllamaModel {
+  name: string;
+  size: number;
+  modified_at: string;
+}
+
+export type WizardStep = 1 | 2 | 3 | 4;
+
+export interface ToolValidationResult {
+  tool_name: string;
+  status: "pass" | "fail";
+  error?: string;
+  output?: any;
+}
+
+export interface ValidateToolsResponse {
+  results: ToolValidationResult[];
+  all_passed: boolean;
+}
+
+export interface EnhanceToolResponse {
+  tool: ToolDefinition;
+  explanation: string;
+}
