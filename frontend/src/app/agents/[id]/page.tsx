@@ -14,6 +14,7 @@ import { startRun, getRuns, updateAgent } from "@/lib/api";
 import { RunResult } from "@/lib/types";
 import { useEffect } from "react";
 import { Play, Save, History, Eye, Zap } from "lucide-react";
+import AgentInputForm from "@/components/runs/AgentInputForm";
 
 type Tab = "overview" | "run" | "history";
 
@@ -31,7 +32,7 @@ export default function AgentDetailPage() {
   const [saving, setSaving] = useState(false);
 
   // Run state
-  const [inputJson, setInputJson] = useState("{}");
+  const [inputData, setInputData] = useState<Record<string, any>>({});
   const [runId, setRunId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const { run, connected } = useRun(runId);
@@ -74,8 +75,7 @@ export default function AgentDetailPage() {
     if (!agent) return;
     setStarting(true);
     try {
-      const parsed = JSON.parse(inputJson);
-      const result = await startRun(agent.id, parsed);
+      const result = await startRun(agent.id, inputData);
       setRunId(result.run_id);
     } catch (err: any) {
       alert(err.message);
@@ -213,16 +213,10 @@ export default function AgentDetailPage() {
       {activeTab === "run" && (
         <div className="space-y-6">
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1.5">
-              Input Data (JSON)
+            <label className="block text-xs font-medium text-gray-400 mb-3">
+              Input
             </label>
-            <textarea
-              value={inputJson}
-              onChange={(e) => setInputJson(e.target.value)}
-              rows={6}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm text-gray-100 font-mono resize-y focus:outline-none focus:border-blue-500"
-              placeholder='{"key": "value"}'
-            />
+            <AgentInputForm agent={agent} onChange={setInputData} />
           </div>
           <button
             onClick={handleStartRun}

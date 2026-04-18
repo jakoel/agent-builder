@@ -48,6 +48,14 @@ def generate_restriction_header() -> str:
     return f'''\
 import sys as _sys
 
+# Pre-import libs that pull in threading/logging as side-effects before the blocker installs
+try:
+    import logging as _logging_preload  # noqa: F401
+    import urllib3 as _urllib3_preload  # noqa: F401
+    import requests as _requests_preload  # noqa: F401
+except Exception:
+    pass
+
 # ---- import restriction hook ------------------------------------------------
 class _ImportBlocker:
     """Meta-path finder that blocks dangerous imports."""

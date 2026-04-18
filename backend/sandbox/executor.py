@@ -48,7 +48,9 @@ import json as _json
 import types as _types
 _user_funcs = [
     v for k, v in dict(globals()).items()
-    if isinstance(v, _types.FunctionType) and not k.startswith("_")
+    if isinstance(v, _types.FunctionType)
+    and not k.startswith("_")
+    and v.__module__ == "__main__"
 ]
 if not _user_funcs:
     raise RuntimeError("No callable function found in tool code")
