@@ -1,58 +1,94 @@
-# Agent Builder Platform
+# Agent Builder
 
-Build, configure, and run AI agents through a chat-based interface. Powered by Ollama for LLM capabilities and LangGraph for agent orchestration.
+A platform for building and running AI agents powered by local Ollama models. Design agents through a conversational chat wizard, then run them as deterministic DAG flows or autonomous ReAct loops.
 
-## Architecture
+## Stack
 
-- **Frontend**: Next.js (App Router, TypeScript, Tailwind CSS)
-- **Backend**: FastAPI (Python, async)
-- **LLM**: Ollama (local models)
-- **Agent Runtime**: LangGraph with sandboxed tool execution
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js 14 (App Router, TypeScript, Tailwind CSS) |
+| Backend | FastAPI (Python, async) |
+| LLM | Ollama (local, `localhost:11434`) |
+| Agent Runtime | LangGraph + custom ReAct engine |
+| Persistence | JSON files on disk (`storage/`) |
 
 ## Quick Start
 
+**Prerequisites:** [Ollama](https://ollama.com) running locally with at least one model pulled.
+
 ```bash
-# 1. Start Ollama
-ollama serve
+# Pull a model
+ollama pull llama3.2
 
-# 2. Pull a model
-ollama pull llama3.1
-
-# 3. Run setup
+# Run setup (installs backend deps, frontend deps)
 ./setup.sh
 
-# 4. Start backend
+# Terminal 1 — backend
 cd backend && uvicorn main:app --reload --port 8000
 
-# 5. Start frontend (in another terminal)
+# Terminal 2 — frontend
 cd frontend && npm run dev
 ```
 
-Open http://localhost:3000 to access the platform.
+Open [http://localhost:3000](http://localhost:3000).
+
+## Configuration
+
+Environment variables (all optional):
+
+| Variable | Default | Description |
+|---|---|---|
+| `AB_OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama endpoint |
+| `AB_DEFAULT_MODEL` | `llama3.2:latest` | Model used for building and running |
+| `AB_STORAGE_PATH` | `./storage` | Where agents and runs are persisted |
 
 ## Project Structure
 
 ```
-agentic_project/
-├── frontend/          # Next.js UI
-├── backend/           # FastAPI backend
-├── storage/           # File-based persistence (agents, runs)
-└── setup.sh           # Setup script
+agent_builder/
+├── backend/
+│   ├── engine/          # ReAct loop + LangGraph DAG builder
+│   ├── routers/         # FastAPI route handlers
+│   ├── schemas/         # Pydantic data models
+│   ├── services/        # Business logic (builder, runner, agents)
+│   ├── tool_library/    # 21 pre-built tools + registry
+│   └── sandbox/         # Sandboxed Python executor
+├── frontend/
+│   └── src/
+│       ├── app/         # Next.js pages (agents, runs, tool-runner)
+│       ├── components/  # UI components
+│       └── lib/         # API client + TypeScript types
+├── storage/             # Runtime data — gitignored
+├── ARCHITECTURE.md      # Full system design
+└── setup.sh
 ```
 
-## Creating an Agent
+## Building an Agent
 
-1. Click "New Agent" in the sidebar
-2. Enter a name, description, and select a model
-3. Describe what you want the agent to do in the chat
-4. The LLM generates system prompts, tools, and flow definitions
-5. Review and edit the generated artifacts
-6. Click "Finalize" to make the agent ready
+1. Click **New Agent** in the sidebar
+2. Describe what you want the agent to do — the wizard generates system prompts, tools, and a flow definition
+3. Review and edit the generated artifacts in the chat
+4. Click **Finalize** to publish the agent
 
 ## Running an Agent
 
-1. Navigate to an agent's detail page
-2. Go to the "Run" tab
-3. Provide input data as JSON
-4. Click "Run Agent"
-5. Watch real-time logs via SSE streaming
+1. Open an agent's detail page
+2. Go to the **Run** tab
+3. Provide input as JSON and click **Run Agent**
+4. Watch real-time log output streamed via SSE
+
+## Execution Modes
+
+**DAG Flow** — deterministic graph of nodes (`tool_call`, `llm_call`, `condition`) wired by the designer. Edges support conditional branching via Python expressions.
+
+**ReAct Loop** — an LLM autonomously decides which tools to call each iteration (up to `max_iterations`, default 30). Activated by a `react_agent` node in the flow.
+
+## Tools
+
+21 pre-built tools are available (web scraping, JSON transforms, text processing, and more). You can also write custom tools in the builder — they run in a sandboxed Python environment with a restricted import allowlist.
+
+Test any tool standalone via the **Tool Runner** page (`/tool-runner`).
+
+## Documentation
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full system design.
