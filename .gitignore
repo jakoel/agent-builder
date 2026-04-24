@@ -1,0 +1,36 @@
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Next.js
+frontend/.next/
+frontend/out/
+frontend/node_modules/
+frontend/tsconfig.tsbuildinfo
+
+# Runtime storage (agent data, run logs)
+storage/agents/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
