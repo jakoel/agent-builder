@@ -199,19 +199,22 @@ def parse_react_response(text: str) -> tuple[str, Any]:
 
 OBSERVATION_MAX_CHARS = 1500
 
+# Scratchpad rendering tiers:
+#   - Most recent SCRATCHPAD_FULL_ENTRIES iterations: shown in full
+#   - Next SCRATCHPAD_SUMMARY_ENTRIES iterations: one-line summary only
+#   - Older iterations: dropped entirely
+# SCRATCHPAD_CHAR_BUDGET is a hard cap applied on top (newest entries kept first).
+SCRATCHPAD_FULL_ENTRIES = 2
+SCRATCHPAD_SUMMARY_ENTRIES = 6
+SCRATCHPAD_CHAR_BUDGET = 6000
+
 
 def _compress_observation(raw: str) -> str:
-    """Replace large list payloads in an observation with a compact summary.
-
-    When a tool returns {"data": [...many records...], ...} the full array
-    balloons the scratchpad context. We keep all scalar/metadata fields intact
-    and reduce the array to a count + first-row sample so the model knows the
-    structure without re-reading every row.
-    """
+    """Replace large list payloads in an observation with a compact summary."""
     try:
         obj = json.loads(raw)
     except (json.JSONDecodeError, ValueError):
-        return raw  # not JSON — leave untouched
+        return raw
 
     if not isinstance(obj, dict):
         return raw
@@ -225,25 +228,82 @@ def _compress_observation(raw: str) -> str:
             compressed[key] = val
 
     result = json.dumps(compressed)
-    # Final safety cap — very wide scalar observations (e.g. large text blobs)
     if len(result) > OBSERVATION_MAX_CHARS:
-        result = result[:OBSERVATION_MAX_CHARS] + f"... [truncated]"
+        result = result[:OBSERVATION_MAX_CHARS] + "... [truncated]"
     return result
 
 
+def _one_line_observation(raw: str) -> str:
+    """Reduce an observation to a single short line for the summary tier."""
+    try:
+        obj = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return raw[:120]
+
+    if not isinstance(obj, dict):
+        return raw[:120]
+
+    parts = []
+    for k, v in obj.items():
+        if isinstance(v, (int, float, bool)):
+            parts.append(f"{k}={v}")
+        elif isinstance(v, str) and len(v) <= 40:
+            parts.append(f"{k}={v!r}")
+        elif isinstance(v, list):
+            parts.append(f"{k}=[{len(v)} items]")
+    result = ", ".join(parts)
+    return (result if result else raw)[:120]
+
+
 def build_scratchpad(entries: list[dict[str, str]]) -> str:
-    """Format the thought/action/observation history."""
+    """Format the thought/action/observation history with tiered compression.
+
+    Recent iterations are shown in full; older ones are collapsed to one-line
+    summaries; very old ones are dropped. A character budget enforces a hard
+    ceiling, always preserving the newest entries.
+    """
     if not entries:
         return ""
-    parts = ["SCRATCHPAD (previous steps):"]
-    for entry in entries:
-        if entry.get("thought"):
-            parts.append(f"Thought: {entry['thought']}")
-        if entry.get("action"):
-            parts.append(f"Action: {entry['action']}")
-        if entry.get("input"):
-            parts.append(f"Input: {entry['input']}")
-        if entry.get("observation"):
-            parts.append(f"Observation: {_compress_observation(entry['observation'])}")
-        parts.append("")
-    return "\n".join(parts)
+
+    n = len(entries)
+    blocks: list[str] = []
+
+    for i, entry in enumerate(entries):
+        age = n - 1 - i  # 0 = most recent
+
+        if age >= SCRATCHPAD_FULL_ENTRIES + SCRATCHPAD_SUMMARY_ENTRIES:
+            continue  # too old — drop
+
+        lines: list[str] = []
+        if age < SCRATCHPAD_FULL_ENTRIES:
+            # Full detail
+            if entry.get("thought"):
+                lines.append(f"Thought: {entry['thought']}")
+            if entry.get("action"):
+                lines.append(f"Action: {entry['action']}")
+            if entry.get("input"):
+                lines.append(f"Input: {entry['input']}")
+            if entry.get("observation"):
+                lines.append(f"Observation: {_compress_observation(entry['observation'])}")
+        else:
+            # Summary line only
+            action = entry.get("action", "?")
+            obs = _one_line_observation(entry.get("observation", ""))
+            lines.append(f"Step {i + 1}: {action} → {obs}")
+
+        blocks.append("\n".join(lines))
+
+    # Apply character budget — keep newest blocks first
+    kept: list[str] = []
+    total = 0
+    for block in reversed(blocks):
+        if total + len(block) > SCRATCHPAD_CHAR_BUDGET:
+            break
+        kept.append(block)
+        total += len(block)
+    kept.reverse()
+
+    if not kept:
+        return ""
+
+    return "SCRATCHPAD (previous steps):\n" + "\n\n".join(kept) + "\n"
