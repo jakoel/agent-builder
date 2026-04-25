@@ -51,7 +51,7 @@ agent_builder/
 │   ├── routers/         # FastAPI route handlers
 │   ├── schemas/         # Pydantic data models
 │   ├── services/        # Business logic (builder, runner, agents)
-│   ├── tool_library/    # 21 pre-built tools + registry
+│   ├── tool_library/    # 24 pre-built tools + registry (incl. 3 memory tools)
 │   └── sandbox/         # Sandboxed Python executor
 ├── frontend/
 │   └── src/
@@ -59,6 +59,9 @@ agent_builder/
 │       ├── components/  # UI components
 │       └── lib/         # API client + TypeScript types
 ├── storage/             # Runtime data — gitignored
+│   ├── agents/          # Agent definitions
+│   ├── runs/            # Run logs
+│   └── memory/          # Per-agent persistent key-value stores
 ├── ARCHITECTURE.md      # Full system design
 └── setup.sh
 ```
@@ -85,9 +88,33 @@ agent_builder/
 
 ## Tools
 
-21 pre-built tools are available (web scraping, JSON transforms, text processing, and more). You can also write custom tools in the builder — they run in a sandboxed Python environment with a restricted import allowlist.
+24 pre-built tools are available across these categories:
+
+| Category | Tools |
+|---|---|
+| Web & Data Fetching | `fetch_url`, `fetch_json_api`, `scrape_page_text`, `scrape_links` |
+| Text & Analysis | `extract_with_regex`, `extract_emails_urls`, `text_statistics`, `keyword_search` |
+| Data Transformation | `csv_parse`, `json_transform`, `merge_datasets`, `deduplicate` |
+| Math & Analytics | `calculate_stats`, `compare_values` |
+| Encoding & Hashing | `hash_data`, `encode_decode`, `validate_schema` |
+| Date & Time | `date_calc` |
+| Formatting & Output | `format_markdown_report`, `render_template` |
+| PDF Processing | `extract_pdf_text` |
+| Memory | `memory_read`, `memory_write`, `memory_list` |
+
+Custom tools can be written in the builder — they run in a sandboxed Python environment with a restricted import allowlist.
 
 Test any tool standalone via the **Tool Runner** page (`/tool-runner`).
+
+## Persistent Agent Memory
+
+Each agent has a persistent key-value store that survives across runs (`storage/memory/{agent_id}.json`). The three memory tools are always available in ReAct loops:
+
+- `memory_read {key}` — retrieve a stored value
+- `memory_write {key, value}` — store any JSON-serializable value
+- `memory_list` — list all stored keys
+
+Large inputs (>2000 chars) are automatically offloaded to memory before the ReAct loop starts, keeping the prompt compact. The agent's task description receives a preview and a `memory_read` instruction instead of the raw data.
 
 ## Documentation
 

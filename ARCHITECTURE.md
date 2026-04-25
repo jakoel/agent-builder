@@ -20,7 +20,7 @@ Agent Builder is a platform for creating and running AI agents powered by local 
 Environment variables (prefix `AB_`):
 - `AB_OLLAMA_BASE_URL` — default `http://localhost:11434`
 - `AB_STORAGE_PATH` — default `./storage`
-- `AB_DEFAULT_MODEL` — default `llama3.2:latest`
+- `AB_DEFAULT_MODEL` — default `qwen3-vl:8b`
 
 ---
 
@@ -67,7 +67,11 @@ Environment variables (prefix `AB_`):
 - `validate_tools` — runs each tool through the sandbox with stub inputs
 - `enhance_tool` — LLM rewrites a tool per user instruction
 
-**`RunnerService`** — manages run lifecycle. Runs execute as `asyncio.Task`. Key method: `_execute_run()` walks the flow DAG node by node. The `react_agent` node type delegates to `_react_run()`.
+**`RunnerService`** — manages run lifecycle. Runs execute as `asyncio.Task`. Key methods:
+- `_execute_run()` — walks the flow DAG node by node; `react_agent` nodes delegate to `_react_run()`
+- `_react_run()` — the ReAct loop; auto-offloads large inputs and injects memory tools before starting
+- `_call_tool(tool_name, code, input_data, agent_id)` — central dispatch: checks `NATIVE_TOOLS` first, falls back to sandbox
+- `_offload_large_inputs(input_data, agent_id)` — moves string values >2000 chars to agent memory, replaces them with a compact preview + `memory_read` instruction
 
 **`SandboxService`** — thin wrapper over `sandbox/executor.py`.
 
@@ -97,14 +101,18 @@ Environment variables (prefix `AB_`):
 
 - `format_tool_schemas(tools)` — renders tool list as a structured text block the LLM reads before acting. For each tool: name, description, parameters with `(required)` markers and defaults, and return field descriptions from `output_schema`. This is the **tool schema contract**.
 - `parse_react_response(text)` — extracts `("ACTION", (tool_name, args))` or `("FINAL", answer)` from LLM output. Uses **brace-counting** (not regex) for JSON extraction so nested objects parse correctly.
-- `build_scratchpad(entries)` — formats Thought/Action/Observation history. Observations are **truncated to 1,500 chars** to avoid context overflow on local models.
+- `build_scratchpad(entries)` — **tiered context management**:
+  - **Full tier** (most recent 2 iterations): raw Thought + Action + Input + Observation (char-capped at 1,500). Raw so the model can use the data as tool input.
+  - **Summary tier** (next 6 iterations): one-line summary — `Step N: tool_name → key=val, count=5`. Key scalars only, lists reduced to item count.
+  - **Dropped** (older than 8 iterations): excluded entirely.
+  - **Character budget**: hard cap of 6,000 chars applied newest-first as a final safety net.
 - `REACT_SYSTEM` — system prompt enforcing strict `Thought / Action / Input` or `Final Answer` format.
 
 ### Tool Library (`backend/tool_library/`)
 
-21 pre-built tools. Each is a standalone Python file with a single function named after the tool, accepting `input_data: dict` and returning `dict`.
+24 pre-built tools. Each is a standalone Python file with a single function named after the tool, accepting `input_data: dict` and returning `dict`.
 
-**`registry.py`** — `TOOL_CATALOG`: list of dicts with `name`, `display_name`, `description`, `category`, `filename`, `parameters` (JSON Schema), `output_schema` (JSON Schema). Functions: `get_catalog()`, `get_tool_code(name)`, `get_tool_detail(name)`.
+**`registry.py`** — `TOOL_CATALOG`: list of dicts with `name`, `display_name`, `description`, `category`, `filename`, `parameters` (JSON Schema), `output_schema` (JSON Schema). Also exports `NATIVE_TOOLS: dict[str, Callable]` — tools that run outside the sandbox, called directly with `(input_data, storage_path, agent_id)`. Functions: `get_catalog()`, `get_tool_code(name)`, `get_tool_detail(name)`.
 
 Categories and tools:
 - **Web & Data Fetching**: `fetch_url`, `fetch_json_api`, `scrape_page_text`, `scrape_links`
@@ -115,6 +123,9 @@ Categories and tools:
 - **Date & Time**: `date_calc`
 - **Formatting & Output**: `format_markdown_report`, `render_template`
 - **PDF Processing**: `extract_pdf_text`
+- **Memory** *(native — bypass sandbox)*: `memory_read`, `memory_write`, `memory_list`
+
+**`memory.py`** — implements the three memory tools. Reads/writes `storage/memory/{agent_id}.json` — a flat JSON key-value store that persists across runs. Memory tools are always injected into the ReAct tool schema regardless of whether they appear in the agent's `tools` list.
 
 ---
 
@@ -123,19 +134,25 @@ Categories and tools:
 The `react_agent` flow node type runs an autonomous loop — the LLM decides which tools to call at runtime rather than following a pre-wired sequence.
 
 ```
+Pre-loop setup:
+  1. _offload_large_inputs() — string values >2000 chars stored to memory, replaced with previews
+  2. Memory tools (memory_read/write/list) injected into tool schema
+
 Loop (up to max_iterations, default 30):
-  1. Build prompt: tool schemas + task + scratchpad history
-  2. Call Ollama → raw LLM response
-  3. Parse response:
-     - "ACTION" → execute tool via sandbox, append observation to scratchpad
+  1. build_scratchpad() — tiered rendering (full / summary / drop) with 6,000-char budget
+  2. Build prompt: tool schemas + task + scratchpad
+  3. Call Ollama → raw LLM response
+  4. Parse response:
+     - "ACTION" → _call_tool() (native or sandbox), append observation to scratchpad
      - "FINAL"  → store react_answer in output_data, break
-     - "UNKNOWN" → inject correction message into scratchpad, retry once; abort on second consecutive failure
-  4. _save_run() after every step (frontend sees live log updates)
+     - "UNKNOWN" → inject correction message into scratchpad, retry
+  5. _save_run() after every step (frontend sees live log updates)
 ```
 
 Key design decisions:
-- Tool input = `{**input_data, **tool_args}` only. Previous tool results are **not** merged in — they appear in the scratchpad for the LLM to read but don't pollute the tool's input dict.
-- Observations in the scratchpad are truncated to 1,500 chars; full results are stored separately in `tool_results`.
+- Tool input = `tool_args` only (for ReAct). Previous tool results are **not** merged in — they appear in the scratchpad for the LLM to read but don't pollute the tool's input dict.
+- Recent scratchpad entries carry the **raw observation** so the model can re-use data as tool input. Only older entries are compressed.
+- Native tools (`memory_*`) bypass the sandbox entirely — called directly via `NATIVE_TOOLS` dict.
 - `_save_run()` is called after every LLM call and every tool execution so the frontend's run log updates in real time.
 
 ---
@@ -246,6 +263,8 @@ storage/
     {agent_id}.json        # AgentDefinition (includes tool code inline)
   runs/
     {run_id}.json          # RunResult (includes all logs)
+  memory/
+    {agent_id}.json        # Persistent key-value store for memory_read/write/list
 ```
 
 All persistence is synchronous file I/O via Pydantic `model_dump_json` / `model_validate_json`. No database.
@@ -275,14 +294,16 @@ POST /api/runs     body: { agent_id, input_data }
 4. Poll `GET /api/runs/{run_id}` until status is `completed` or `failed`.
 5. Read `output_data` and `logs` from the run result.
 
-See `test_react.py` and `test_react2.py` for working examples using pre-built tools in a `react_agent` flow.
+See `test_react.py`, `test_react2.py`, and `test_react3.py` for working examples using pre-built tools in a `react_agent` flow.
 
 ---
 
 ## Known Constraints
 
-- **Context window**: Local Ollama models typically have 4k–8k token context. Scratchpad observations are truncated to 1,500 chars to avoid overflow in ReAct loops.
-- **ReAct format compliance**: Smaller models (< 7B) may deviate from the strict `Thought/Action/Input` format. The engine retries once with a correction nudge; two consecutive failures abort the loop.
+- **Context window**: Local Ollama models typically have 4k–8k token context. The tiered scratchpad (full → summary → drop) and 6,000-char budget keep context bounded, but very long-running pipelines may still lose early observations.
+- **ReAct format compliance**: Smaller models (< 7B) may deviate from the strict `Thought/Action/Input` format. The engine retries with a correction nudge on parse failure.
+- **Model speed**: Local inference with larger models (e.g. `qwen3-vl:8b`) runs at ~60–120 seconds per LLM call on CPU. Long pipelines can take 10–20 minutes end-to-end.
 - **Sandbox is not a true VM**: The subprocess + import blocklist is defense-in-depth, not a security boundary. Do not run untrusted user-submitted tool code in production.
 - **No streaming during ReAct**: Ollama is called with `stream: False` per iteration. The frontend sees log updates between iterations (via `_save_run`) but not token-by-token within a single LLM call.
 - **Single-process**: All runs execute as `asyncio.Task` in the same FastAPI process. Heavy concurrent runs will contend.
+- **Memory is flat JSON**: The per-agent key-value store has no TTL, namespacing, or size limit. Large values stored via `memory_write` persist indefinitely until explicitly overwritten.
