@@ -276,7 +276,7 @@ def build_scratchpad(entries: list[dict[str, str]]) -> str:
 
         lines: list[str] = []
         if age < SCRATCHPAD_FULL_ENTRIES:
-            # Full detail
+            # Full detail — raw observation so the model can use it as tool input
             if entry.get("thought"):
                 lines.append(f"Thought: {entry['thought']}")
             if entry.get("action"):
@@ -284,7 +284,10 @@ def build_scratchpad(entries: list[dict[str, str]]) -> str:
             if entry.get("input"):
                 lines.append(f"Input: {entry['input']}")
             if entry.get("observation"):
-                lines.append(f"Observation: {_compress_observation(entry['observation'])}")
+                obs = entry["observation"]
+                if len(obs) > OBSERVATION_MAX_CHARS:
+                    obs = obs[:OBSERVATION_MAX_CHARS] + "... [truncated]"
+                lines.append(f"Observation: {obs}")
         else:
             # Summary line only
             action = entry.get("action", "?")

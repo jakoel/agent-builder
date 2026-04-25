@@ -218,20 +218,16 @@ task_input = {
         f"Here is exam data for 12 student records (some students appear twice due to a logging error):\n\n"
         f"{CSV_DATA}\n\n"
         "Complete ALL of these steps using only the available tools:\n"
-        "1. Parse the CSV.\n"
-        "2. Deduplicate — remove duplicate rows (compare all fields).\n"
-        "3. Calculate statistics (mean, median, min, max, std_dev) on the 'score' column "
-        "   for ALL deduplicated students.\n"
-        "4. Filter to keep only students who passed (score >= 60).\n"
-        "5. Calculate the same statistics on the passing students' scores only.\n"
-        "6. Compare the all-student stats dict vs the passer stats dict using compare_values "
-        "   — pass {\"mean\": X, \"min\": Y, \"max\": Z} for both old and new.\n"
-        "7. Generate a markdown report with: a summary line, a 'Deduplication' section "
-        "   (key_value type), a 'Score Statistics' section (key_value type showing both all "
-        "   and passer stats), a 'Comparison' section (text type), and a 'Failing Students' "
-        "   section (list type with names of students who scored < 60).\n"
+        "1. csv_parse — parse the CSV.\n"
+        "2. deduplicate — remove duplicate rows (compare all fields).\n"
+        "3. calculate_stats on the 'score' column for ALL deduplicated students.\n"
+        "4. json_transform — filter to keep only students who passed (score >= 60).\n"
+        "5. calculate_stats on the passing students' scores only.\n"
+        "6. compare_values — compare {mean, min, max} of all-student stats vs passer stats.\n"
+        "7. format_markdown_report — include Deduplication, Score Statistics, Comparison, "
+        "   and Failing Students sections.\n"
         "Do not skip any step. Do not guess any number — every value must come from a tool observation."
-    )
+    ),
 }
 
 # ------------------------------------------------------------------

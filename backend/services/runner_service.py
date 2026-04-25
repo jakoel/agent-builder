@@ -18,7 +18,8 @@ from ..engine.react_engine import (
 )
 from ..schemas.agent import AgentDefinition, FlowNode
 from ..schemas.run import RunLog, RunResult
-from ..tool_library.registry import NATIVE_TOOLS
+from ..tool_library.registry import NATIVE_TOOLS, TOOL_CATALOG
+from ..tool_library.memory import memory_write
 from .agent_service import AgentService
 from .ollama_service import OllamaService
 from .sandbox_service import SandboxService
@@ -261,9 +262,27 @@ class RunnerService:
         node: FlowNode,
         input_data: dict[str, Any],
     ) -> dict[str, Any]:
-        tool_map = {t.name: t for t in agent_def.tools}
-        task = json.dumps(input_data)
-        tool_descriptions = format_tool_schemas(agent_def.tools)
+        # Offload large string inputs to memory; replace with compact references
+        task_input = self._offload_large_inputs(input_data, agent_def.id)
+        task = json.dumps(task_input)
+
+        # Always make memory tools available in ReAct (needed to retrieve offloaded data)
+        all_tools = list(agent_def.tools)
+        existing_names = {t.name for t in all_tools}
+        from ..schemas.agent import ToolDefinition
+        for cat_entry in TOOL_CATALOG:
+            if cat_entry["name"] in NATIVE_TOOLS and cat_entry["name"] not in existing_names:
+                all_tools.append(ToolDefinition(
+                    name=cat_entry["name"],
+                    description=cat_entry["description"],
+                    parameters=cat_entry["parameters"],
+                    output_schema=cat_entry["output_schema"],
+                    code="",
+                    filename="__native__",
+                ))
+
+        tool_map = {t.name: t for t in all_tools}
+        tool_descriptions = format_tool_schemas(all_tools)
         scratchpad_entries: list[dict[str, str]] = []
 
         for iteration in range(node.max_iterations):
@@ -326,6 +345,26 @@ class RunnerService:
 
         self._log(result, node.id, f"Reached max iterations ({node.max_iterations})")
         return {"final_answer": "Max iterations reached without a final answer.", "iterations": node.max_iterations}
+
+    LARGE_STRING_THRESHOLD = 2000  # chars — strings longer than this get offloaded to memory
+
+    def _offload_large_inputs(self, input_data: dict[str, Any], agent_id: str) -> dict[str, Any]:
+        """Store large string values in agent memory; replace with a compact reference."""
+        result: dict[str, Any] = {}
+        for k, v in input_data.items():
+            if isinstance(v, str) and len(v) > self.LARGE_STRING_THRESHOLD:
+                lines = v.strip().splitlines()
+                preview = "\n".join(lines[:4])
+                memory_write({"key": k, "value": v}, settings.STORAGE_PATH, agent_id)
+                result[k] = (
+                    f"[Data stored in agent memory under key='{k}' "
+                    f"({len(lines)} lines). "
+                    f"Call memory_read with key='{k}' to retrieve it. "
+                    f"Preview (first 4 lines):\n{preview}"
+                )
+            else:
+                result[k] = v
+        return result
 
     async def _call_tool(
         self,
