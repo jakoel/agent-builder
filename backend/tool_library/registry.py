@@ -26,6 +26,16 @@ TOOL_CATALOG: list[dict[str, Any]] = [
             },
             "required": ["url"],
         },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "status_code": {"type": "integer", "description": "HTTP status code"},
+                "url": {"type": "string"},
+                "body": {"type": "string", "description": "Raw response body"},
+                "json": {"type": "object", "description": "Parsed JSON if response was JSON"},
+                "error": {"type": "string"},
+            },
+        },
     },
     {
         "name": "fetch_json_api",
@@ -45,6 +55,15 @@ TOOL_CATALOG: list[dict[str, Any]] = [
             },
             "required": ["url"],
         },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "status_code": {"type": "integer"},
+                "data": {"description": "Parsed JSON response body"},
+                "headers": {"type": "object"},
+                "error": {"type": "string"},
+            },
+        },
     },
     {
         "name": "scrape_page_text",
@@ -60,6 +79,15 @@ TOOL_CATALOG: list[dict[str, Any]] = [
                 "max_length": {"type": "integer", "default": 10000},
             },
             "required": ["url"],
+        },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "Extracted plain text"},
+                "url": {"type": "string"},
+                "char_count": {"type": "integer"},
+                "error": {"type": "string"},
+            },
         },
     },
     {
@@ -77,6 +105,15 @@ TOOL_CATALOG: list[dict[str, Any]] = [
                 "selector": {"type": "string", "description": "CSS selector to scope"},
             },
             "required": ["url"],
+        },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "links": {"type": "array", "description": "List of {url, text} dicts"},
+                "count": {"type": "integer"},
+                "url": {"type": "string"},
+                "error": {"type": "string"},
+            },
         },
     },
     # --- Text Extraction & Analysis ---
@@ -97,6 +134,15 @@ TOOL_CATALOG: list[dict[str, Any]] = [
             },
             "required": ["text", "pattern"],
         },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "matches": {"type": "array", "description": "List of matched strings"},
+                "count": {"type": "integer"},
+                "pattern": {"type": "string"},
+                "error": {"type": "string"},
+            },
+        },
     },
     {
         "name": "extract_emails_urls",
@@ -111,6 +157,16 @@ TOOL_CATALOG: list[dict[str, Any]] = [
                 "deduplicate": {"type": "boolean", "default": True},
             },
             "required": ["text"],
+        },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "emails": {"type": "array", "description": "Extracted email addresses"},
+                "urls": {"type": "array", "description": "Extracted URLs"},
+                "email_count": {"type": "integer"},
+                "url_count": {"type": "integer"},
+                "error": {"type": "string"},
+            },
         },
     },
     {
@@ -127,6 +183,17 @@ TOOL_CATALOG: list[dict[str, Any]] = [
                 "stop_words": {"type": "array", "items": {"type": "string"}},
             },
             "required": ["text"],
+        },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "word_count": {"type": "integer"},
+                "sentence_count": {"type": "integer"},
+                "char_count": {"type": "integer"},
+                "avg_word_length": {"type": "number"},
+                "top_keywords": {"type": "array", "description": "List of {word, count} dicts"},
+                "error": {"type": "string"},
+            },
         },
     },
     {
@@ -146,6 +213,16 @@ TOOL_CATALOG: list[dict[str, Any]] = [
             },
             "required": ["text", "keywords"],
         },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "results": {"type": "array", "description": "List of {keyword, snippet, position} dicts"},
+                "total_matches": {"type": "integer"},
+                "keywords_found": {"type": "array"},
+                "keywords_missing": {"type": "array"},
+                "error": {"type": "string"},
+            },
+        },
     },
     # --- Data Transformation ---
     {
@@ -161,6 +238,16 @@ TOOL_CATALOG: list[dict[str, Any]] = [
                 "data": {"type": "array"},
                 "delimiter": {"type": "string", "default": ","},
                 "has_header": {"type": "boolean", "default": True},
+            },
+        },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "data": {"type": "array", "description": "Parsed rows as list of dicts (CSV→JSON mode)"},
+                "csv_text": {"type": "string", "description": "CSV string (JSON→CSV mode)"},
+                "row_count": {"type": "integer"},
+                "columns": {"type": "array", "description": "Column names"},
+                "error": {"type": "string"},
             },
         },
     },
@@ -185,6 +272,15 @@ TOOL_CATALOG: list[dict[str, Any]] = [
             },
             "required": ["data"],
         },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "data": {"description": "Filtered/transformed records (array) or grouped dict"},
+                "count": {"type": "integer", "description": "Total number of records"},
+                "grouped": {"type": "boolean"},
+                "error": {"type": "string"},
+            },
+        },
     },
     {
         "name": "merge_datasets",
@@ -203,6 +299,14 @@ TOOL_CATALOG: list[dict[str, Any]] = [
             },
             "required": ["left", "right", "left_key"],
         },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "data": {"type": "array", "description": "Merged records"},
+                "count": {"type": "integer"},
+                "error": {"type": "string"},
+            },
+        },
     },
     {
         "name": "deduplicate",
@@ -218,6 +322,16 @@ TOOL_CATALOG: list[dict[str, Any]] = [
                 "keep": {"type": "string", "default": "first"},
             },
             "required": ["data"],
+        },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "data": {"type": "array", "description": "Deduplicated records"},
+                "original_count": {"type": "integer"},
+                "deduplicated_count": {"type": "integer"},
+                "duplicates_removed": {"type": "integer"},
+                "error": {"type": "string"},
+            },
         },
     },
     # --- Math & Analytics ---
@@ -236,6 +350,21 @@ TOOL_CATALOG: list[dict[str, Any]] = [
                 "percentiles": {"type": "array", "items": {"type": "number"}},
             },
         },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "min": {"type": "number"},
+                "max": {"type": "number"},
+                "mean": {"type": "number"},
+                "median": {"type": "number"},
+                "std_dev": {"type": "number"},
+                "variance": {"type": "number"},
+                "sum": {"type": "number"},
+                "count": {"type": "integer"},
+                "percentiles": {"type": "object", "description": "Requested percentile values keyed by percentile"},
+                "error": {"type": "string"},
+            },
+        },
     },
     {
         "name": "compare_values",
@@ -251,6 +380,18 @@ TOOL_CATALOG: list[dict[str, Any]] = [
                 "key_field": {"type": "string"},
             },
             "required": ["old", "new"],
+        },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "type": {"type": "string", "description": "dict | list | scalar"},
+                "added": {"type": "array", "description": "Keys/records present in new but not old"},
+                "removed": {"type": "array", "description": "Keys/records present in old but not new"},
+                "modified": {"type": "array", "description": "Keys/records changed between old and new"},
+                "unchanged_count": {"type": "integer"},
+                "summary": {"type": "string", "description": "Human-readable change summary"},
+                "error": {"type": "string"},
+            },
         },
     },
     # --- Encoding, Hashing & Validation ---
@@ -268,6 +409,15 @@ TOOL_CATALOG: list[dict[str, Any]] = [
                 "algorithm": {"type": "string", "default": "sha256"},
             },
         },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "hash": {"type": "string", "description": "Hex digest"},
+                "algorithm": {"type": "string"},
+                "input_length": {"type": "integer"},
+                "error": {"type": "string"},
+            },
+        },
     },
     {
         "name": "encode_decode",
@@ -283,6 +433,14 @@ TOOL_CATALOG: list[dict[str, Any]] = [
             },
             "required": ["text", "operation"],
         },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "result": {"type": "string", "description": "Encoded or decoded string"},
+                "operation": {"type": "string"},
+                "error": {"type": "string"},
+            },
+        },
     },
     {
         "name": "validate_schema",
@@ -297,6 +455,14 @@ TOOL_CATALOG: list[dict[str, Any]] = [
                 "schema": {"type": "object"},
             },
             "required": ["data", "schema"],
+        },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "valid": {"type": "boolean"},
+                "errors": {"type": "array", "description": "List of validation error messages"},
+                "error": {"type": "string"},
+            },
         },
     },
     # --- Date & Time ---
@@ -320,6 +486,16 @@ TOOL_CATALOG: list[dict[str, Any]] = [
             },
             "required": ["date"],
         },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "result": {"type": "string", "description": "Formatted date/time result"},
+                "iso": {"type": "string", "description": "ISO 8601 representation"},
+                "timestamp": {"type": "number", "description": "Unix timestamp"},
+                "diff": {"type": "object", "description": "For diff operation: {days, hours, minutes, seconds, total_seconds}"},
+                "error": {"type": "string"},
+            },
+        },
     },
     # --- Formatting & Output ---
     {
@@ -337,6 +513,15 @@ TOOL_CATALOG: list[dict[str, Any]] = [
             },
             "required": ["title", "sections"],
         },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "markdown": {"type": "string", "description": "Rendered markdown document"},
+                "char_count": {"type": "integer"},
+                "section_count": {"type": "integer"},
+                "error": {"type": "string"},
+            },
+        },
     },
     {
         "name": "render_template",
@@ -351,6 +536,13 @@ TOOL_CATALOG: list[dict[str, Any]] = [
                 "variables": {"type": "object"},
             },
             "required": ["template", "variables"],
+        },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "result": {"type": "string", "description": "Rendered template string"},
+                "error": {"type": "string"},
+            },
         },
     },
     # --- PDF ---
@@ -367,6 +559,15 @@ TOOL_CATALOG: list[dict[str, Any]] = [
                 "file_path": {"type": "string", "description": "Local path to PDF"},
                 "pages": {"type": "array", "items": {"type": "integer"}},
                 "max_pages": {"type": "integer", "default": 50},
+            },
+        },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "Extracted text content"},
+                "pages_extracted": {"type": "integer"},
+                "total_pages": {"type": "integer"},
+                "error": {"type": "string"},
             },
         },
     },

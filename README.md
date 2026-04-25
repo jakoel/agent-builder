@@ -18,7 +18,7 @@ A platform for building and running AI agents powered by local Ollama models. De
 
 ```bash
 # Pull a model
-ollama pull llama3.2
+ollama pull qwen3-vl:8b
 
 # Run setup (installs backend deps, frontend deps)
 ./setup.sh
@@ -39,7 +39,7 @@ Environment variables (all optional):
 | Variable | Default | Description |
 |---|---|---|
 | `AB_OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama endpoint |
-| `AB_DEFAULT_MODEL` | `llama3.2:latest` | Model used for building and running |
+| `AB_DEFAULT_MODEL` | `qwen3-vl:8b` | Model used for building and running |
 | `AB_STORAGE_PATH` | `./storage` | Where agents and runs are persisted |
 
 ## Project Structure

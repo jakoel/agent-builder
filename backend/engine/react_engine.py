@@ -200,12 +200,39 @@ def parse_react_response(text: str) -> tuple[str, Any]:
 OBSERVATION_MAX_CHARS = 1500
 
 
-def build_scratchpad(entries: list[dict[str, str]]) -> str:
-    """Format the thought/action/observation history.
+def _compress_observation(raw: str) -> str:
+    """Replace large list payloads in an observation with a compact summary.
 
-    Observations are truncated to OBSERVATION_MAX_CHARS to prevent context
-    overflow on local models with limited context windows.
+    When a tool returns {"data": [...many records...], ...} the full array
+    balloons the scratchpad context. We keep all scalar/metadata fields intact
+    and reduce the array to a count + first-row sample so the model knows the
+    structure without re-reading every row.
     """
+    try:
+        obj = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return raw  # not JSON — leave untouched
+
+    if not isinstance(obj, dict):
+        return raw
+
+    compressed = {}
+    for key, val in obj.items():
+        if isinstance(val, list) and len(val) > 2:
+            sample = val[0] if val else {}
+            compressed[key] = f"[{len(val)} records — first: {json.dumps(sample)}]"
+        else:
+            compressed[key] = val
+
+    result = json.dumps(compressed)
+    # Final safety cap — very wide scalar observations (e.g. large text blobs)
+    if len(result) > OBSERVATION_MAX_CHARS:
+        result = result[:OBSERVATION_MAX_CHARS] + f"... [truncated]"
+    return result
+
+
+def build_scratchpad(entries: list[dict[str, str]]) -> str:
+    """Format the thought/action/observation history."""
     if not entries:
         return ""
     parts = ["SCRATCHPAD (previous steps):"]
@@ -217,9 +244,6 @@ def build_scratchpad(entries: list[dict[str, str]]) -> str:
         if entry.get("input"):
             parts.append(f"Input: {entry['input']}")
         if entry.get("observation"):
-            obs = entry["observation"]
-            if len(obs) > OBSERVATION_MAX_CHARS:
-                obs = obs[:OBSERVATION_MAX_CHARS] + f"\n... [truncated, {len(entry['observation'])} chars total]"
-            parts.append(f"Observation: {obs}")
+            parts.append(f"Observation: {_compress_observation(entry['observation'])}")
         parts.append("")
     return "\n".join(parts)
