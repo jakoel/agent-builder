@@ -42,6 +42,17 @@ class AgentService:
     # CRUD
     # ------------------------------------------------------------------
 
+    async def create_full_agent(self, agent_def: AgentDefinition) -> AgentDefinition:
+        if not agent_def.id:
+            agent_def = agent_def.model_copy(update={"id": uuid.uuid4().hex[:12]})
+        agent_dir = self._agent_dir(agent_def.id)
+        agent_dir.mkdir(parents=True, exist_ok=True)
+        (agent_dir / "tools").mkdir(exist_ok=True)
+        now = datetime.utcnow()
+        agent_def = agent_def.model_copy(update={"created_at": now, "updated_at": now})
+        self._write(agent_def)
+        return agent_def
+
     async def create_agent(
         self, name: str, description: str, model: Optional[str] = None
     ) -> AgentDefinition:

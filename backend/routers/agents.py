@@ -14,6 +14,11 @@ router = APIRouter(prefix="/api/agents", tags=["agents"])
 _agent_svc = AgentService()
 
 
+@router.post("/", response_model=AgentDefinition, status_code=201)
+async def create_agent(body: AgentDefinition) -> AgentDefinition:
+    return await _agent_svc.create_full_agent(body)
+
+
 @router.get("/", response_model=List[AgentDefinition])
 async def list_agents() -> list[AgentDefinition]:
     return await _agent_svc.list_agents()
