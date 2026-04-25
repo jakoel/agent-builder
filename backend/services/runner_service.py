@@ -9,7 +9,14 @@ from pathlib import Path
 from typing import Any, Optional
 
 from ..config import settings
-from ..schemas.agent import AgentDefinition
+from ..engine.react_engine import (
+    REACT_SYSTEM,
+    REACT_PROMPT_TEMPLATE,
+    build_scratchpad,
+    format_tool_schemas,
+    parse_react_response,
+)
+from ..schemas.agent import AgentDefinition, FlowNode
 from ..schemas.run import RunLog, RunResult
 from .agent_service import AgentService
 from .ollama_service import OllamaService
@@ -174,6 +181,9 @@ class RunnerService:
                     self._log(result, node.id, f"LLM response: {llm_resp[:500]}")
                 elif node.type == "condition":
                     self._log(result, node.id, "Evaluating condition")
+                elif node.type == "react_agent":
+                    react_out = await self._react_run(result, agent_def, node, input_data)
+                    tool_results[node.id] = react_out
 
                 self._save_run(result)
 
@@ -244,6 +254,75 @@ class RunnerService:
         result.completed_at = datetime.utcnow()
         self._save_run(result)
         return result
+
+    async def _react_run(
+        self,
+        result: RunResult,
+        agent_def: AgentDefinition,
+        node: FlowNode,
+        input_data: dict[str, Any],
+    ) -> dict[str, Any]:
+        tool_map = {t.name: t for t in agent_def.tools}
+        task = json.dumps(input_data)
+        tool_descriptions = format_tool_schemas(agent_def.tools)
+        scratchpad_entries: list[dict[str, str]] = []
+
+        for iteration in range(node.max_iterations):
+            scratchpad = build_scratchpad(scratchpad_entries)
+            prompt = REACT_PROMPT_TEMPLATE.format(
+                tool_descriptions=tool_descriptions,
+                task=task,
+                scratchpad=scratchpad,
+            )
+
+            self._log(result, node.id, f"ReAct iteration {iteration + 1}/{node.max_iterations}")
+            self._save_run(result)
+
+            response = await self._ollama.chat(
+                model=agent_def.model,
+                messages=[{"role": "user", "content": prompt}],
+                system=REACT_SYSTEM,
+            )
+            self._log(result, node.id, f"LLM: {response[:400]}")
+
+            kind, payload = parse_react_response(response)
+
+            if kind == "FINAL":
+                self._log(result, node.id, f"Final Answer: {payload}")
+                return {"final_answer": payload, "iterations": iteration + 1}
+
+            if kind == "ACTION":
+                tool_name, tool_args = payload
+                tool_def = tool_map.get(tool_name)
+                if tool_def is None:
+                    observation = f"Error: tool '{tool_name}' not found. Available: {list(tool_map.keys())}"
+                else:
+                    self._log(result, node.id, f"Calling tool: {tool_name} args={json.dumps(tool_args)[:200]}")
+                    try:
+                        obs_dict = await self._sandbox.execute_tool(
+                            code=tool_def.code, input_data=tool_args
+                        )
+                        observation = json.dumps(obs_dict)
+                    except Exception as exc:
+                        observation = f"Error executing tool: {exc}"
+                self._log(result, node.id, f"Observation: {observation[:400]}")
+            else:
+                observation = "Could not parse your response. Use the exact format: Thought / Action / Input or Final Answer."
+                self._log(result, node.id, f"Parse failed: {response[:200]}")
+
+            thought_text = ""
+            if "Thought:" in response:
+                thought_text = response.split("Thought:", 1)[1].split("Action:", 1)[0].strip()
+
+            scratchpad_entries.append({
+                "thought": thought_text,
+                "action": payload[0] if kind == "ACTION" else "",
+                "input": json.dumps(payload[1]) if kind == "ACTION" else "",
+                "observation": observation,
+            })
+
+        self._log(result, node.id, f"Reached max iterations ({node.max_iterations})")
+        return {"final_answer": "Max iterations reached without a final answer.", "iterations": node.max_iterations}
 
     def _log(self, result: RunResult, node_id: str, message: str) -> None:
         result.logs.append(

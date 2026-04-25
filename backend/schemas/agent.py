@@ -10,6 +10,7 @@ class ToolDefinition(BaseModel):
     name: str
     description: str
     parameters: dict[str, Any] = Field(default_factory=dict, description="JSON Schema for tool parameters")
+    output_schema: dict[str, Any] = Field(default_factory=dict, description="JSON Schema for tool output")
     code: str
     filename: str
 
@@ -17,9 +18,10 @@ class ToolDefinition(BaseModel):
 class FlowNode(BaseModel):
     id: str
     label: str
-    type: Literal["tool_call", "llm_call", "condition", "start", "end"]
+    type: Literal["tool_call", "llm_call", "condition", "start", "end", "react_agent"]
     tool_name: Optional[str] = None
     prompt_template: Optional[str] = None
+    max_iterations: int = 30
 
 
 class FlowEdge(BaseModel):
