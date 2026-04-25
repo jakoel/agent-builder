@@ -33,7 +33,7 @@ Environment variables (prefix `AB_`):
 
 | File | Prefix | Responsibility |
 |---|---|---|
-| `agents.py` | `/api/agents` | CRUD for agent definitions |
+| `agents.py` | `/api/agents` | CRUD for agent definitions; `POST /` accepts a full `AgentDefinition` for programmatic creation |
 | `builder.py` | `/api/builder` | Conversational agent-building wizard |
 | `runs.py` | `/api/runs` | Start, poll, cancel agent runs; SSE log streaming |
 | `tool_library.py` | `/api/tool-library` | List pre-built tools, get detail, run a tool directly |
@@ -56,7 +56,7 @@ Environment variables (prefix `AB_`):
 
 **`OllamaService`** — async HTTP client for Ollama. Methods: `chat()` (non-streaming), `chat_stream()` (async generator), `list_models()`. Timeout: 600s read.
 
-**`AgentService`** — file-based CRUD for `AgentDefinition`. Agents stored as JSON in `storage/agents/{id}.json`.
+**`AgentService`** — file-based CRUD for `AgentDefinition`. Agents stored as JSON in `storage/agents/{id}.json`. `create_full_agent(AgentDefinition)` accepts a complete definition (used by `POST /api/agents`) and auto-assigns an id if omitted — this is the entry point for programmatic agent creation, bypassing the builder wizard entirely.
 
 **`BuilderService`** — orchestrates the wizard flow. Phase handlers:
 - `refine_prompt` — takes user description, returns polished system prompt
@@ -249,6 +249,33 @@ storage/
 ```
 
 All persistence is synchronous file I/O via Pydantic `model_dump_json` / `model_validate_json`. No database.
+
+---
+
+## Programmatic Agent Creation
+
+Agents can be created directly via the API without going through the builder wizard — useful for scripting, testing, and AI-assisted agent authoring.
+
+```
+POST /api/agents   body: AgentDefinition (full)
+  → AgentService.create_full_agent()
+    → writes storage/agents/{id}/agent.json
+  → returns AgentDefinition with assigned id
+
+POST /api/runs     body: { agent_id, input_data }
+  → RunnerService.start_run()
+    → asyncio.Task: _execute_run()
+  → GET /api/runs/{run_id}  polls for status + logs
+```
+
+**Workflow for scripted agents:**
+1. Construct an `AgentDefinition` dict — set `status: "ready"`, include full tool code and a flow with the desired node types.
+2. `POST /api/agents` → receive `agent_id`.
+3. `POST /api/runs` with `agent_id` and `input_data`.
+4. Poll `GET /api/runs/{run_id}` until status is `completed` or `failed`.
+5. Read `output_data` and `logs` from the run result.
+
+See `test_react.py` and `test_react2.py` for working examples using pre-built tools in a `react_agent` flow.
 
 ---
 
