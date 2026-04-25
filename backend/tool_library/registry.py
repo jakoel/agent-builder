@@ -3,9 +3,18 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
+from .memory import memory_read, memory_write, memory_list
 
 TOOL_DIR = Path(__file__).parent
+
+# Native tools bypass the sandbox — called directly with (input_data, storage_path, agent_id)
+NATIVE_TOOLS: dict[str, Callable] = {
+    "memory_read": memory_read,
+    "memory_write": memory_write,
+    "memory_list": memory_list,
+}
 
 # Each entry: (filename, function_name, display_name, description, category, parameters schema)
 TOOL_CATALOG: list[dict[str, Any]] = [
@@ -571,6 +580,68 @@ TOOL_CATALOG: list[dict[str, Any]] = [
             },
         },
     },
+    # --- Memory ---
+    {
+        "name": "memory_read",
+        "display_name": "Memory Read",
+        "description": "Read a value from this agent's persistent key-value memory store. Returns the stored value and a found flag.",
+        "category": "Memory",
+        "filename": "__native__",
+        "parameters": {
+            "type": "object",
+            "required": ["key"],
+            "properties": {
+                "key": {"type": "string", "description": "Key to read"},
+            },
+        },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "value": {"description": "Stored value, or null if not found"},
+                "found": {"type": "boolean", "description": "Whether the key exists in memory"},
+            },
+        },
+    },
+    {
+        "name": "memory_write",
+        "display_name": "Memory Write",
+        "description": "Write a value to this agent's persistent key-value memory store. Overwrites any existing value for the key.",
+        "category": "Memory",
+        "filename": "__native__",
+        "parameters": {
+            "type": "object",
+            "required": ["key", "value"],
+            "properties": {
+                "key": {"type": "string", "description": "Key to write"},
+                "value": {"description": "Value to store (any JSON-serializable type)"},
+            },
+        },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "ok": {"type": "boolean"},
+                "key": {"type": "string", "description": "Key that was written"},
+            },
+        },
+    },
+    {
+        "name": "memory_list",
+        "display_name": "Memory List",
+        "description": "List all keys currently stored in this agent's persistent memory.",
+        "category": "Memory",
+        "filename": "__native__",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+        },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "keys": {"type": "array", "items": {"type": "string"}, "description": "All stored keys"},
+                "count": {"type": "integer"},
+            },
+        },
+    },
 ]
 
 
@@ -595,8 +666,11 @@ def get_tool_detail(name: str) -> dict[str, Any] | None:
     for entry in TOOL_CATALOG:
         if entry["name"] == name:
             result = dict(entry)
-            path = TOOL_DIR / entry["filename"]
-            if path.exists():
-                result["code"] = path.read_text()
+            if entry["filename"] == "__native__":
+                result["code"] = "# native tool — runs outside sandbox"
+            else:
+                path = TOOL_DIR / entry["filename"]
+                if path.exists():
+                    result["code"] = path.read_text()
             return result
     return None

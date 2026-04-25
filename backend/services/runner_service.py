@@ -18,6 +18,7 @@ from ..engine.react_engine import (
 )
 from ..schemas.agent import AgentDefinition, FlowNode
 from ..schemas.run import RunLog, RunResult
+from ..tool_library.registry import NATIVE_TOOLS
 from .agent_service import AgentService
 from .ollama_service import OllamaService
 from .sandbox_service import SandboxService
@@ -158,9 +159,7 @@ class RunnerService:
                         raise ValueError(f"Tool '{node.tool_name}' not found")
                     self._log(result, node.id, f"Executing tool: {node.tool_name}")
                     sandbox_input = {**input_data, **tool_results}
-                    res = await self._sandbox.execute_tool(
-                        code=tool_def.code, input_data=sandbox_input
-                    )
+                    res = await self._call_tool(tool_def.name, tool_def.code, sandbox_input, agent_def.id)
                     tool_results[node.tool_name or node.id] = res
                     self._log(result, node.id, f"Tool result: {json.dumps(res)[:500]}")
                 elif node.type == "llm_call":
@@ -294,13 +293,17 @@ class RunnerService:
             if kind == "ACTION":
                 tool_name, tool_args = payload
                 tool_def = tool_map.get(tool_name)
-                if tool_def is None:
+                is_native = tool_name in NATIVE_TOOLS
+                if tool_def is None and not is_native:
                     observation = f"Error: tool '{tool_name}' not found. Available: {list(tool_map.keys())}"
                 else:
                     self._log(result, node.id, f"Calling tool: {tool_name} args={json.dumps(tool_args)[:300]}")
                     try:
-                        obs_dict = await self._sandbox.execute_tool(
-                            code=tool_def.code, input_data=tool_args
+                        obs_dict = await self._call_tool(
+                            tool_name,
+                            tool_def.code if tool_def else "",
+                            tool_args,
+                            agent_def.id,
                         )
                         observation = json.dumps(obs_dict)
                     except Exception as exc:
@@ -323,6 +326,18 @@ class RunnerService:
 
         self._log(result, node.id, f"Reached max iterations ({node.max_iterations})")
         return {"final_answer": "Max iterations reached without a final answer.", "iterations": node.max_iterations}
+
+    async def _call_tool(
+        self,
+        tool_name: str,
+        tool_code: str,
+        input_data: dict[str, Any],
+        agent_id: str,
+    ) -> dict[str, Any]:
+        native_fn = NATIVE_TOOLS.get(tool_name)
+        if native_fn is not None:
+            return native_fn(input_data, settings.STORAGE_PATH, agent_id)
+        return await self._sandbox.execute_tool(code=tool_code, input_data=input_data)
 
     def _log(self, result: RunResult, node_id: str, message: str) -> None:
         result.logs.append(
