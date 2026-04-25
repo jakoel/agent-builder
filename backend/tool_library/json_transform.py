@@ -107,6 +107,14 @@ def _apply_op(val: Any, op: str, target: Any) -> bool:
             return val == target
         if op == "ne":
             return val != target
+        # For ordered comparisons try numeric coercion first so that string
+        # values from CSV ("92") compare correctly against numeric targets (60).
+        if op in ("gt", "lt", "gte", "lte"):
+            try:
+                val = float(val)
+                target = float(target)
+            except (TypeError, ValueError):
+                pass
         if op == "gt":
             return val > target
         if op == "lt":

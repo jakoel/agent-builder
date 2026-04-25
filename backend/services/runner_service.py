@@ -297,7 +297,7 @@ class RunnerService:
                 if tool_def is None:
                     observation = f"Error: tool '{tool_name}' not found. Available: {list(tool_map.keys())}"
                 else:
-                    self._log(result, node.id, f"Calling tool: {tool_name} args={json.dumps(tool_args)[:200]}")
+                    self._log(result, node.id, f"Calling tool: {tool_name} args={json.dumps(tool_args)[:300]}")
                     try:
                         obs_dict = await self._sandbox.execute_tool(
                             code=tool_def.code, input_data=tool_args
@@ -305,7 +305,7 @@ class RunnerService:
                         observation = json.dumps(obs_dict)
                     except Exception as exc:
                         observation = f"Error executing tool: {exc}"
-                self._log(result, node.id, f"Observation: {observation[:400]}")
+                self._log(result, node.id, f"Observation: {observation[:2000]}")
             else:
                 observation = "Could not parse your response. Use the exact format: Thought / Action / Input or Final Answer."
                 self._log(result, node.id, f"Parse failed: {response[:200]}")
