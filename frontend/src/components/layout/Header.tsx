@@ -6,6 +6,8 @@ const titles: Record<string, string> = {
   "/": "Dashboard",
   "/agents/new": "Create New Agent",
   "/runs": "Run History",
+  "/settings": "Settings",
+  "/tool-runner": "Tool Runner",
 };
 
 export default function Header() {
@@ -23,8 +25,8 @@ export default function Header() {
   }
 
   return (
-    <header className="h-14 border-b border-gray-800 bg-gray-900/50 backdrop-blur flex items-center px-6">
-      <h2 className="text-sm font-semibold text-gray-100">{title}</h2>
+    <header className="h-12 border-b border-slate-800/60 bg-slate-900/40 backdrop-blur-sm flex items-center px-6 shrink-0">
+      <h2 className="text-sm font-semibold text-slate-200 tracking-tight">{title}</h2>
     </header>
   );
 }

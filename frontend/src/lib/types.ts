@@ -52,10 +52,18 @@ export interface RunResult {
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
   current_node?: string;
   logs: RunLog[];
+  input_data?: Record<string, any>;
   output_data?: any;
   error?: string;
   started_at: string;
   completed_at?: string;
+}
+
+export interface SuggestedTool {
+  name: string;
+  description: string;
+  parameters?: Record<string, any>;
+  prebuilt?: boolean;
 }
 
 export interface BuilderMessage {
@@ -64,6 +72,8 @@ export interface BuilderMessage {
   artifacts?: {
     system_prompt?: string;
     tools?: ToolDefinition[];
+    suggested_tools?: SuggestedTool[];
+    tool?: ToolDefinition;
     flow?: FlowDefinition;
   };
 }
@@ -91,4 +101,17 @@ export interface ValidateToolsResponse {
 export interface EnhanceToolResponse {
   tool: ToolDefinition;
   explanation: string;
+}
+
+export interface AppSettings {
+  model_provider: string;
+  ollama_base_url: string;
+  default_model: string;
+  openai_api_key: string;
+  openai_base_url: string;
+  anthropic_api_key: string;
+  anthropic_base_url: string;
+  default_temperature: number;
+  default_max_tokens: number;
+  [key: string]: unknown;
 }

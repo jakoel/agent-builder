@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .routers import agents, builder, models, runs, tool_library
+from .routers import settings as settings_router
 
 
 @asynccontextmanager
@@ -44,6 +45,7 @@ app.include_router(builder.router)
 app.include_router(runs.router)
 app.include_router(models.router)
 app.include_router(tool_library.router)
+app.include_router(settings_router.router)
 
 
 # ---------------------------------------------------------------------------

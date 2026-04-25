@@ -12,6 +12,7 @@ from .tool_loader import load_tools
 from ..schemas.agent import AgentDefinition
 from ..services.ollama_service import OllamaService
 from ..services.sandbox_service import SandboxService
+from ..services import settings_service
 
 
 def build_graph(
@@ -77,10 +78,13 @@ def build_graph(
                     tool_results=json.dumps(state.get("tool_results", {})),
                 )
                 msgs = [{"role": "user", "content": prompt}]
+                cfg = settings_service.load()
                 resp = await ollama_service.chat(
                     model=agent_def.model,
                     messages=msgs,
                     system=agent_def.system_prompt or None,
+                    temperature=cfg.get("default_temperature", 0.7),
+                    max_tokens=cfg.get("default_max_tokens", 2048),
                 )
                 messages = state.get("messages") or []
                 messages.append(resp)

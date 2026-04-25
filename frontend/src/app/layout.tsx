@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import Sidebar from "@/components/layout/Sidebar";
 import Header from "@/components/layout/Header";
 
-const inter = Inter({ subsets: ["latin"] });
+const font = Space_Grotesk({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+});
 
 export const metadata: Metadata = {
   title: "Agent Builder Platform",
@@ -18,7 +21,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className={`${inter.className} bg-gray-950 text-gray-100`}>
+      <body className={`${font.className} bg-slate-950 text-slate-100 antialiased`}>
         <div className="flex min-h-screen">
           <Sidebar />
           <div className="flex-1 flex flex-col min-h-screen">

@@ -1,5 +1,6 @@
 import {
   AgentDefinition,
+  AppSettings,
   BuilderMessage,
   EnhanceToolResponse,
   OllamaModel,
@@ -140,7 +141,33 @@ export async function getToolDetail(name: string): Promise<any> {
   return request(`/api/tool-library/${name}`);
 }
 
+export async function runTool(
+  name: string,
+  inputData: Record<string, any>
+): Promise<{ status: string; output?: any; error?: string }> {
+  return request(`/api/tool-library/${name}/run`, {
+    method: "POST",
+    body: JSON.stringify({ input_data: inputData }),
+  });
+}
+
 // Models
 export async function getModels(): Promise<OllamaModel[]> {
   return request<OllamaModel[]>("/api/models");
+}
+
+// Settings
+export async function getSettings(): Promise<AppSettings> {
+  return request<AppSettings>("/api/settings/");
+}
+
+export async function updateSettings(data: Record<string, unknown>): Promise<AppSettings> {
+  return request<AppSettings>("/api/settings/", {
+    method: "PUT",
+    body: JSON.stringify({ data }),
+  });
+}
+
+export async function resetSettings(): Promise<AppSettings> {
+  return request<AppSettings>("/api/settings/reset", { method: "POST" });
 }

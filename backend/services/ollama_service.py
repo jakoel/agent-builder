@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json as _json
 from typing import Any, AsyncGenerator, Optional
 
 import httpx
@@ -20,59 +21,60 @@ class OllamaService:
     async def close(self) -> None:
         await self._client.aclose()
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     async def list_models(self) -> list[dict[str, Any]]:
-        """Return the list of locally available models from Ollama."""
         resp = await self._client.get("/api/tags")
         resp.raise_for_status()
-        data = resp.json()
-        return data.get("models", [])
+        return resp.json().get("models", [])
 
     async def chat(
         self,
         model: str,
         messages: list[dict[str, str]],
         system: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
     ) -> str:
         """Non-streaming chat completion. Returns the assistant message content."""
-        payload: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "stream": False,
-        }
+        payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False}
         if system:
             payload["messages"] = [{"role": "system", "content": system}] + payload["messages"]
+        options: dict[str, Any] = {}
+        if temperature is not None:
+            options["temperature"] = temperature
+        if max_tokens is not None:
+            options["num_predict"] = max_tokens
+        if options:
+            payload["options"] = options
 
         resp = await self._client.post("/api/chat", json=payload)
         resp.raise_for_status()
-        data = resp.json()
-        return data.get("message", {}).get("content", "")
+        return resp.json().get("message", {}).get("content", "")
 
     async def chat_stream(
         self,
         model: str,
         messages: list[dict[str, str]],
         system: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
     ) -> AsyncGenerator[str, None]:
         """Streaming chat completion. Yields content chunks as they arrive."""
-        payload: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "stream": True,
-        }
+        payload: dict[str, Any] = {"model": model, "messages": messages, "stream": True}
         if system:
             payload["messages"] = [{"role": "system", "content": system}] + payload["messages"]
+        options: dict[str, Any] = {}
+        if temperature is not None:
+            options["temperature"] = temperature
+        if max_tokens is not None:
+            options["num_predict"] = max_tokens
+        if options:
+            payload["options"] = options
 
         async with self._client.stream("POST", "/api/chat", json=payload) as resp:
             resp.raise_for_status()
             async for line in resp.aiter_lines():
                 if not line:
                     continue
-                import json as _json
-
                 try:
                     chunk = _json.loads(line)
                 except _json.JSONDecodeError:

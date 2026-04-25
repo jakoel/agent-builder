@@ -66,4 +66,3 @@ Requires Ollama running at `localhost:11434`. Default model: `llama3.2:latest`.
 cd frontend && npx tsc --noEmit
 ```
 
-Pre-existing errors in `StepDesign.tsx` (lines 214, 239, 305, 369) — ignore these, they are known and unrelated to new work.

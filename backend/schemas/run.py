@@ -24,6 +24,7 @@ class RunResult(BaseModel):
     status: Literal["pending", "running", "completed", "failed", "cancelled"] = "pending"
     current_node: Optional[str] = None
     logs: list[RunLog] = Field(default_factory=list)
+    input_data: dict[str, Any] = Field(default_factory=dict)
     output_data: Optional[dict[str, Any]] = None
     error: Optional[str] = None
     started_at: datetime = Field(default_factory=datetime.utcnow)

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, Loader2, Send } from "lucide-react";
 import { sendBuilderMessage, getToolDetail } from "@/lib/api";
-import { ToolDefinition, FlowDefinition } from "@/lib/types";
+import { ToolDefinition, FlowDefinition, SuggestedTool } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -24,12 +24,6 @@ type DesignPhase =
   | "tool_review"
   | "done";
 
-interface SuggestedTool {
-  name: string;
-  description: string;
-  parameters?: Record<string, any>;
-  prebuilt?: boolean;
-}
 
 interface StepDesignProps {
   agentId: string;

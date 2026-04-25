@@ -23,6 +23,7 @@ from ..tool_library.memory import memory_write
 from .agent_service import AgentService
 from .ollama_service import OllamaService
 from .sandbox_service import SandboxService
+from . import settings_service
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,7 @@ class RunnerService:
             run_id=run_id,
             agent_id=agent_id,
             status="pending",
+            input_data=input_data,
             started_at=datetime.utcnow(),
         )
         self._save_run(result)
@@ -123,11 +125,15 @@ class RunnerService:
         result.status = "running"
         self._save_run(result)
 
+        cfg = settings_service.load()
+        temperature: float = cfg.get("default_temperature", 0.7)
+        max_tokens: int = cfg.get("default_max_tokens", 2048)
+
         try:
             flow = agent_def.flow
             if flow is None:
                 # No flow -- just do a single LLM call
-                result = await self._simple_llm_run(result, agent_def, input_data)
+                result = await self._simple_llm_run(result, agent_def, input_data, temperature, max_tokens)
                 return
 
             # Build lookup tables
@@ -175,6 +181,8 @@ class RunnerService:
                         model=agent_def.model,
                         messages=messages,
                         system=agent_def.system_prompt or None,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
                     )
                     messages.append({"role": "assistant", "content": llm_resp})
                     tool_results[f"llm_{node.id}"] = llm_resp
@@ -182,7 +190,7 @@ class RunnerService:
                 elif node.type == "condition":
                     self._log(result, node.id, "Evaluating condition")
                 elif node.type == "react_agent":
-                    react_out = await self._react_run(result, agent_def, node, input_data)
+                    react_out = await self._react_run(result, agent_def, node, input_data, temperature, max_tokens)
                     tool_results[node.id] = react_out
 
                 self._save_run(result)
@@ -236,6 +244,8 @@ class RunnerService:
         result: RunResult,
         agent_def: AgentDefinition,
         input_data: dict[str, Any],
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
     ) -> RunResult:
         """Fallback when no flow is defined: single LLM call."""
         self._log(result, "llm", "No flow defined -- running single LLM call")
@@ -245,6 +255,8 @@ class RunnerService:
                 model=agent_def.model,
                 messages=messages,
                 system=agent_def.system_prompt or None,
+                temperature=temperature,
+                max_tokens=max_tokens,
             )
             result.output_data = {"response": llm_resp}
             result.status = "completed"
@@ -261,6 +273,8 @@ class RunnerService:
         agent_def: AgentDefinition,
         node: FlowNode,
         input_data: dict[str, Any],
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
     ) -> dict[str, Any]:
         # Offload large string inputs to memory; replace with compact references
         task_input = self._offload_large_inputs(input_data, agent_def.id)
@@ -300,6 +314,8 @@ class RunnerService:
                 model=agent_def.model,
                 messages=[{"role": "user", "content": prompt}],
                 system=REACT_SYSTEM,
+                temperature=temperature,
+                max_tokens=max_tokens,
             )
             self._log(result, node.id, f"LLM: {response[:400]}")
 

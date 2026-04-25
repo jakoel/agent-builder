@@ -10,10 +10,11 @@ import FlowVisualization from "@/components/flow/FlowVisualization";
 import RunStatus from "@/components/runs/RunStatus";
 import RunLogViewer from "@/components/runs/RunLog";
 import RunHistory from "@/components/runs/RunHistory";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { startRun, getRuns, updateAgent } from "@/lib/api";
 import { RunResult } from "@/lib/types";
 import { useEffect } from "react";
-import { Play, Save, History, Eye, Zap } from "lucide-react";
+import { Play, Save, History, Eye, Zap, Wrench, Calendar } from "lucide-react";
 import AgentInputForm from "@/components/runs/AgentInputForm";
 
 type Tab = "overview" | "run" | "history";
@@ -25,26 +26,18 @@ export default function AgentDetailPage() {
   const { agent, loading, error, refetch } = useAgent(id);
 
   const [activeTab, setActiveTab] = useState<Tab>("overview");
-
-  // Overview state
   const [editingPrompt, setEditingPrompt] = useState(false);
   const [promptValue, setPromptValue] = useState("");
   const [saving, setSaving] = useState(false);
-
-  // Run state
   const [inputData, setInputData] = useState<Record<string, any>>({});
   const [runId, setRunId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const { run, connected } = useRun(runId);
-
-  // History state
   const [runs, setRuns] = useState<RunResult[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
   useEffect(() => {
-    if (agent) {
-      setPromptValue(agent.system_prompt);
-    }
+    if (agent) setPromptValue(agent.system_prompt);
   }, [agent]);
 
   useEffect(() => {
@@ -64,11 +57,8 @@ export default function AgentDetailPage() {
       await updateAgent(agent.id, { system_prompt: promptValue });
       setEditingPrompt(false);
       refetch();
-    } catch {
-      // ignore
-    } finally {
-      setSaving(false);
-    }
+    } catch {}
+    finally { setSaving(false); }
   };
 
   const handleStartRun = async () => {
@@ -86,49 +76,57 @@ export default function AgentDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64 text-gray-500">
-        Loading...
+      <div className="p-6 max-w-5xl mx-auto space-y-5">
+        <div className="space-y-2">
+          <Skeleton className="h-6 w-48" />
+          <Skeleton className="h-4 w-72" />
+        </div>
+        <div className="flex gap-1">
+          {[1,2,3].map((i) => <Skeleton key={i} className="h-10 w-24 rounded-xl" />)}
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          {[1,2,3].map((i) => <Skeleton key={i} className="h-20 rounded-2xl" />)}
+        </div>
+        <Skeleton className="h-40 w-full rounded-2xl" />
       </div>
     );
   }
 
   if (error || !agent) {
     return (
-      <div className="flex items-center justify-center h-64 text-red-400">
+      <div className="flex items-center justify-center h-64 text-red-400 text-sm">
         {error ?? "Agent not found"}
       </div>
     );
   }
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
-    { key: "overview", label: "Overview", icon: <Eye size={14} /> },
-    { key: "run", label: "Run", icon: <Zap size={14} /> },
-    { key: "history", label: "History", icon: <History size={14} /> },
+    { key: "overview", label: "Overview", icon: <Eye size={13} /> },
+    { key: "run",      label: "Run",      icon: <Zap size={13} /> },
+    { key: "history",  label: "History",  icon: <History size={13} /> },
   ];
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
       {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
-        <div className="flex-1">
-          <h1 className="text-xl font-bold text-white">{agent.name}</h1>
-          <p className="text-sm text-gray-400 mt-0.5">
-            {agent.description}
-          </p>
+      <div className="flex items-start justify-between gap-4 mb-5">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-100">{agent.name}</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{agent.description}</p>
         </div>
         <RunStatus status={agent.status} />
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-gray-800 mb-6">
+      <div className="flex gap-1 bg-slate-900 border border-slate-800 rounded-xl p-1 w-fit mb-6">
         {tabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors ${
+            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
               activeTab === tab.key
-                ? "text-blue-400 border-b-2 border-blue-400"
-                : "text-gray-500 hover:text-gray-300"
+                ? "bg-violet-500/15 text-violet-300 shadow-sm"
+                : "text-slate-500 hover:text-slate-300"
             }`}
           >
             {tab.icon}
@@ -137,124 +135,113 @@ export default function AgentDetailPage() {
         ))}
       </div>
 
-      {/* Overview Tab */}
+      {/* Overview */}
       {activeTab === "overview" && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-3 gap-4 text-sm">
-            <div className="bg-gray-900 rounded-lg p-4 border border-gray-800">
-              <span className="text-gray-500">Model</span>
-              <p className="font-mono text-gray-200 mt-1">{agent.model}</p>
-            </div>
-            <div className="bg-gray-900 rounded-lg p-4 border border-gray-800">
-              <span className="text-gray-500">Tools</span>
-              <p className="text-gray-200 mt-1">{agent.tools.length}</p>
-            </div>
-            <div className="bg-gray-900 rounded-lg p-4 border border-gray-800">
-              <span className="text-gray-500">Created</span>
-              <p className="text-gray-200 mt-1">
-                {new Date(agent.created_at).toLocaleDateString()}
-              </p>
-            </div>
+        <div className="space-y-5">
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { icon: <Wrench size={14} />, label: "Model", value: <span className="font-mono text-xs">{agent.model}</span> },
+              { icon: <Wrench size={14} />, label: "Tools", value: `${agent.tools.length}` },
+              { icon: <Calendar size={14} />, label: "Created", value: new Date(agent.created_at).toLocaleDateString() },
+            ].map(({ icon, label, value }) => (
+              <div key={label} className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+                <div className="flex items-center gap-1.5 text-slate-500 text-xs mb-1.5">
+                  {icon}
+                  <span>{label}</span>
+                </div>
+                <div className="text-sm font-medium text-slate-200">{value}</div>
+              </div>
+            ))}
           </div>
 
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-gray-300">
-                System Prompt
-              </h3>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-slate-300">System Prompt</h3>
               {!editingPrompt ? (
                 <button
                   onClick={() => setEditingPrompt(true)}
-                  className="text-xs text-blue-400 hover:text-blue-300"
+                  className="text-xs text-violet-400 hover:text-violet-300 transition-colors"
                 >
                   Edit
                 </button>
               ) : (
-                <div className="flex gap-2">
+                <div className="flex gap-3">
                   <button
-                    onClick={() => {
-                      setEditingPrompt(false);
-                      setPromptValue(agent.system_prompt);
-                    }}
-                    className="text-xs text-gray-400 hover:text-gray-300"
+                    onClick={() => { setEditingPrompt(false); setPromptValue(agent.system_prompt); }}
+                    className="text-xs text-slate-500 hover:text-slate-300"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleSavePrompt}
                     disabled={saving}
-                    className="flex items-center gap-1 text-xs text-green-400 hover:text-green-300"
+                    className="flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300"
                   >
-                    <Save size={12} />
-                    {saving ? "Saving..." : "Save"}
+                    <Save size={11} />
+                    {saving ? "Saving…" : "Save"}
                   </button>
                 </div>
               )}
             </div>
-            <PromptEditor
-              value={promptValue}
-              onChange={setPromptValue}
-              readOnly={!editingPrompt}
-            />
+            <PromptEditor value={promptValue} onChange={setPromptValue} readOnly={!editingPrompt} />
           </div>
 
-          <ToolEditor tools={agent.tools} />
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+            <ToolEditor tools={agent.tools} />
+          </div>
 
-          <div>
-            <h3 className="text-sm font-medium text-gray-300 mb-2">
-              Flow
-            </h3>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+            <h3 className="text-sm font-medium text-slate-300 mb-3">Flow</h3>
             <FlowVisualization flow={agent.flow} />
           </div>
         </div>
       )}
 
-      {/* Run Tab */}
+      {/* Run */}
       {activeTab === "run" && (
-        <div className="space-y-6">
-          <div>
-            <label className="block text-xs font-medium text-gray-400 mb-3">
+        <div className="space-y-5">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+            <label className="block text-xs font-medium text-slate-400 mb-3 uppercase tracking-wider">
               Input
             </label>
             <AgentInputForm agent={agent} onChange={setInputData} />
           </div>
+
           <button
             onClick={handleStartRun}
             disabled={starting || (run !== null && run.status === "running")}
-            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-xl shadow-lg shadow-violet-500/20 transition-all"
           >
-            <Play size={16} />
-            {starting ? "Starting..." : "Run Agent"}
+            <Play size={15} />
+            {starting ? "Starting…" : "Run Agent"}
           </button>
 
           {run && (
             <div className="space-y-4">
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3 flex-wrap">
                 <RunStatus status={run.status} />
                 {connected && (
-                  <span className="text-xs text-green-400">
-                    Connected (SSE)
+                  <span className="text-xs text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-full">
+                    Live
                   </span>
                 )}
                 {run.current_node && (
-                  <span className="text-xs text-gray-400">
-                    Node: {run.current_node}
+                  <span className="text-xs text-slate-500 font-mono bg-slate-800 px-2 py-1 rounded">
+                    {run.current_node}
                   </span>
                 )}
               </div>
               <RunLogViewer logs={run.logs} />
               {run.output_data && (
-                <div>
-                  <h4 className="text-sm font-medium text-gray-300 mb-2">
-                    Output
-                  </h4>
-                  <pre className="bg-gray-950 border border-gray-800 rounded-lg p-4 text-xs text-gray-300 font-mono overflow-auto">
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+                  <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Output</h4>
+                  <pre className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-300 font-mono overflow-auto whitespace-pre-wrap">
                     {JSON.stringify(run.output_data, null, 2)}
                   </pre>
                 </div>
               )}
               {run.error && (
-                <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-sm text-red-400">
+                <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-sm text-red-400">
                   {run.error}
                 </div>
               )}
@@ -263,13 +250,15 @@ export default function AgentDetailPage() {
         </div>
       )}
 
-      {/* History Tab */}
+      {/* History */}
       {activeTab === "history" && (
         <div>
           {historyLoading ? (
-            <div className="text-center py-8 text-gray-500">Loading...</div>
+            <div className="space-y-2">
+              {[1,2,3].map((i) => <Skeleton key={i} className="h-14 w-full rounded-xl" />)}
+            </div>
           ) : (
-            <RunHistory runs={runs} />
+            <RunHistory runs={runs} hideAgentColumn />
           )}
         </div>
       )}
