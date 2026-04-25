@@ -10,6 +10,7 @@ import FlowVisualization from "@/components/flow/FlowVisualization";
 import RunStatus from "@/components/runs/RunStatus";
 import RunLogViewer from "@/components/runs/RunLog";
 import RunHistory from "@/components/runs/RunHistory";
+import UsageStats from "@/components/runs/UsageStats";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { startRun, getRuns, updateAgent } from "@/lib/api";
 import { RunResult } from "@/lib/types";
@@ -32,7 +33,7 @@ export default function AgentDetailPage() {
   const [inputData, setInputData] = useState<Record<string, any>>({});
   const [runId, setRunId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
-  const { run, connected } = useRun(runId);
+  const { run, liveOutput, connected } = useRun(runId);
   const [runs, setRuns] = useState<RunResult[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
@@ -231,6 +232,31 @@ export default function AgentDetailPage() {
                   </span>
                 )}
               </div>
+
+              <UsageStats
+                usage={run.usage}
+                llmCalls={run.llm_calls}
+                totalLatencyMs={run.total_llm_latency_ms}
+                provider={run.provider}
+              />
+
+              {liveOutput && (
+                <div className="bg-slate-900 border border-violet-500/30 rounded-2xl p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-violet-400" />
+                    </span>
+                    <span className="text-xs font-medium text-violet-300 uppercase tracking-wider">
+                      Streaming
+                    </span>
+                  </div>
+                  <pre className="text-sm text-slate-200 whitespace-pre-wrap font-mono leading-relaxed max-h-72 overflow-y-auto">
+                    {liveOutput}
+                  </pre>
+                </div>
+              )}
+
               <RunLogViewer logs={run.logs} />
               {run.output_data && (
                 <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">

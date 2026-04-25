@@ -1,6 +1,6 @@
 # Agent Builder
 
-A platform for building and running AI agents powered by local Ollama models. Design agents through a conversational chat wizard, then run them as deterministic DAG flows or autonomous ReAct loops.
+A platform for building and running AI agents. Design agents through a conversational chat wizard, then run them as deterministic DAG flows or autonomous ReAct loops. Supports Ollama (local), OpenAI, and Anthropic as LLM providers.
 
 ## Stack
 
@@ -8,16 +8,16 @@ A platform for building and running AI agents powered by local Ollama models. De
 |---|---|
 | Frontend | Next.js 14 (App Router, TypeScript, Tailwind CSS) |
 | Backend | FastAPI (Python, async) |
-| LLM | Ollama (local, `localhost:11434`) |
+| LLM | Ollama · OpenAI · Anthropic (configurable via Settings) |
 | Agent Runtime | LangGraph + custom ReAct engine |
 | Persistence | JSON files on disk (`storage/`) |
 
 ## Quick Start
 
-**Prerequisites:** [Ollama](https://ollama.com) running locally with at least one model pulled.
+**Prerequisites:** [Ollama](https://ollama.com) running locally with at least one model pulled (if using Ollama provider).
 
 ```bash
-# Pull a model
+# Pull a model (Ollama only)
 ollama pull qwen3-vl:8b
 
 # Run setup (installs backend deps, frontend deps)
@@ -34,7 +34,19 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Configuration
 
-Environment variables (all optional):
+Provider and model settings are managed through the **Settings page** (`/settings`) in the UI — no environment variables required for most setups. Settings are persisted to `storage/settings.json` and read on every LLM call.
+
+| Setting | Default | Description |
+|---|---|---|
+| Provider | `ollama` | `ollama` · `openai` · `anthropic` |
+| Model | `qwen3-vl:8b` | Any model name valid for the selected provider |
+| Ollama base URL | `http://localhost:11434` | Ollama endpoint (Ollama provider only) |
+| OpenAI API key | — | Required for OpenAI provider |
+| Anthropic API key | — | Required for Anthropic provider |
+| Temperature | `0.7` | Sampling temperature (0–2) |
+| Max tokens | `2048` | Maximum completion tokens |
+
+Environment variables (all optional, override defaults before first settings save):
 
 | Variable | Default | Description |
 |---|---|---|
@@ -78,7 +90,8 @@ agent_builder/
 1. Open an agent's detail page
 2. Go to the **Run** tab
 3. Provide input as JSON and click **Run Agent**
-4. Watch real-time log output streamed via SSE
+4. Watch token-level streaming output and real-time log updates via SSE
+5. Usage stats (tokens, cost, latency) are shown after the run completes
 
 ## Execution Modes
 

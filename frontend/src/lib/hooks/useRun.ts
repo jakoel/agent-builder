@@ -7,12 +7,16 @@ const BASE_URL = "http://localhost:8000";
 
 export function useRun(runId: string | null) {
   const [run, setRun] = useState<RunResult | null>(null);
+  const [liveOutput, setLiveOutput] = useState<string>("");
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    if (!runId) return;
+    if (!runId) {
+      setLiveOutput("");
+      return;
+    }
 
     const es = new EventSource(`${BASE_URL}/api/runs/${runId}/stream`);
     esRef.current = es;
@@ -29,9 +33,7 @@ export function useRun(runId: string | null) {
           if (!prev) return prev;
           return { ...prev, logs: [...prev.logs, log] };
         });
-      } catch {
-        // ignore parse errors
-      }
+      } catch {}
     });
 
     es.addEventListener("status", (event) => {
@@ -41,18 +43,22 @@ export function useRun(runId: string | null) {
           if (!prev) return { ...update, logs: update.logs ?? [] } as RunResult;
           return { ...prev, ...update };
         });
-      } catch {
-        // ignore parse errors
-      }
+      } catch {}
     });
 
-    es.addEventListener("result", (event) => {
+    es.addEventListener("live", (event) => {
+      try {
+        const { text } = JSON.parse(event.data);
+        setLiveOutput(text ?? "");
+      } catch {}
+    });
+
+    es.addEventListener("done", (event) => {
       try {
         const result: RunResult = JSON.parse(event.data);
         setRun(result);
-      } catch {
-        // ignore parse errors
-      }
+        setLiveOutput("");
+      } catch {}
     });
 
     es.onerror = () => {
@@ -65,8 +71,9 @@ export function useRun(runId: string | null) {
       es.close();
       esRef.current = null;
       setConnected(false);
+      setLiveOutput("");
     };
   }, [runId]);
 
-  return { run, connected, error };
+  return { run, liveOutput, connected, error };
 }

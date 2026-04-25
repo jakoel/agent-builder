@@ -15,7 +15,7 @@ from ..schemas.agent import (
 from ..schemas.builder import BuilderMessage, BuilderSession
 from ..tool_library.registry import get_catalog
 from .agent_service import AgentService
-from .ollama_service import OllamaService
+from .llm_service import LLMService
 from .sandbox_service import SandboxService
 
 logger = logging.getLogger(__name__)
@@ -106,14 +106,19 @@ class BuilderService:
 
     def __init__(
         self,
-        ollama: OllamaService,
+        llm: LLMService,
         agent_svc: AgentService,
         sandbox: Optional[SandboxService] = None,
     ) -> None:
-        self._ollama = ollama
+        self._llm = llm
         self._agent_svc = agent_svc
         self._sandbox = sandbox or SandboxService()
         self._sessions: dict[str, BuilderSession] = {}
+
+    async def _chat(self, **kwargs: Any) -> str:
+        """Wizard-internal LLM call: returns content string only (usage discarded)."""
+        result = await self._llm.chat(**kwargs)
+        return result.content
 
     async def start_session(
         self, name: str, description: str, model: Optional[str] = None
@@ -164,7 +169,7 @@ class BuilderService:
             draft_section = "\nThis is the initial description from the user.\n"
 
         system = REFINE_PROMPT_SYSTEM.format(draft_section=draft_section)
-        response = await self._ollama.chat(
+        response = await self._chat(
             model=agent_def.model,
             messages=[{"role": "user", "content": user_message}],
             system=system,
@@ -202,7 +207,7 @@ class BuilderService:
             prebuilt_catalog=PREBUILT_TOOLS_TEXT,
             current_tools_section=current_tools_section,
         )
-        response = await self._ollama.chat(
+        response = await self._chat(
             model=agent_def.model,
             messages=[{"role": "user", "content": user_message}],
             system=system,
@@ -271,7 +276,7 @@ class BuilderService:
             if current_code
             else f"Generate the {tool_name} tool function."
         )
-        response = await self._ollama.chat(
+        response = await self._chat(
             model=agent_def.model,
             messages=[{"role": "user", "content": prompt_msg}],
             system=system,
@@ -322,7 +327,7 @@ class BuilderService:
         chat_messages = [
             {"role": m.role, "content": m.content} for m in session.messages
         ]
-        raw_response = await self._ollama.chat(
+        raw_response = await self._chat(
             model=agent_def.model,
             messages=chat_messages,
             system=META_PROMPT,
@@ -404,7 +409,7 @@ class BuilderService:
             "Return ONLY the Python code, no markdown fences, no explanation.\n\n"
             f"{code}"
         )
-        corrected = await self._ollama.chat(
+        corrected = await self._chat(
             model=model,
             messages=[{"role": "user", "content": validation_prompt}],
         )
@@ -469,7 +474,7 @@ class BuilderService:
             "- Do NOT use os, sys, subprocess, socket, or any other restricted module\n\n"
             "Return the improved Python function code. After the code, add a brief explanation on a new line starting with 'EXPLANATION:'"
         )
-        response = await self._ollama.chat(
+        response = await self._chat(
             model=agent_def.model,
             messages=[{"role": "user", "content": enhance_prompt}],
         )

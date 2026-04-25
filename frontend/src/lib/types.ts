@@ -46,6 +46,13 @@ export interface RunLog {
   level: string;
 }
 
+export interface TokenUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+}
+
 export interface RunResult {
   run_id: string;
   agent_id: string;
@@ -57,6 +64,10 @@ export interface RunResult {
   error?: string;
   started_at: string;
   completed_at?: string;
+  usage?: TokenUsage;
+  llm_calls?: number;
+  total_llm_latency_ms?: number;
+  provider?: string;
 }
 
 export interface SuggestedTool {

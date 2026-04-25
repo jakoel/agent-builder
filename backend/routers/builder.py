@@ -12,17 +12,17 @@ from ..schemas.agent import AgentDefinition
 from ..schemas.builder import BuilderMessage, BuilderSession, EnhanceToolRequest
 from ..services.agent_service import AgentService
 from ..services.builder_service import BuilderService
-from ..services.ollama_service import OllamaService
+from ..services.llm_service import LLMService
 from ..services.sandbox_service import SandboxService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/builder", tags=["builder"])
 
-_ollama = OllamaService()
+_llm = LLMService()
 _agent_svc = AgentService()
 _sandbox_svc = SandboxService()
-_builder_svc = BuilderService(_ollama, _agent_svc, _sandbox_svc)
+_builder_svc = BuilderService(_llm, _agent_svc, _sandbox_svc)
 
 
 class StartRequest(BaseModel):

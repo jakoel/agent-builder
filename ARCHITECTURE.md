@@ -2,7 +2,7 @@
 
 ## Overview
 
-Agent Builder is a platform for creating and running AI agents powered by local Ollama models. Users design agents through a chat wizard, then run them against tasks. The platform supports two execution models: a deterministic DAG flow (nodes wired by the designer) and a dynamic ReAct loop (the LLM decides which tools to call at runtime).
+Agent Builder is a platform for creating and running AI agents. Users design agents through a chat wizard, then run them against tasks. The platform supports two execution models: a deterministic DAG flow (nodes wired by the designer) and a dynamic ReAct loop (the LLM decides which tools to call at runtime). LLM calls are routed through a unified `LLMService` that supports Ollama, OpenAI, and Anthropic — switchable at runtime via the Settings page.
 
 ---
 
@@ -12,15 +12,17 @@ Agent Builder is a platform for creating and running AI agents powered by local 
 |---|---|
 | Frontend | Next.js 14 (App Router, TypeScript, Tailwind CSS) |
 | Backend | FastAPI (Python, async) |
-| LLM | Ollama (local, HTTP API at `localhost:11434`) |
+| LLM | Ollama · OpenAI · Anthropic (via `LLMService`) |
 | Agent Runtime | LangGraph + custom ReAct engine |
-| Persistence | JSON files on disk (`storage/agents/`, `storage/runs/`) |
+| Persistence | JSON files on disk (`storage/agents/`, `storage/runs/`, `storage/settings.json`) |
 | Tool Sandbox | Python subprocess with import blocklist |
 
 Environment variables (prefix `AB_`):
 - `AB_OLLAMA_BASE_URL` — default `http://localhost:11434`
 - `AB_STORAGE_PATH` — default `./storage`
 - `AB_DEFAULT_MODEL` — default `qwen3-vl:8b`
+
+Runtime configuration is managed via `storage/settings.json` (provider, API keys, temperature, max_tokens). Settings are read fresh on every LLM call so changes take effect immediately without a restart.
 
 ---
 
@@ -35,9 +37,10 @@ Environment variables (prefix `AB_`):
 |---|---|---|
 | `agents.py` | `/api/agents` | CRUD for agent definitions; `POST /` accepts a full `AgentDefinition` for programmatic creation |
 | `builder.py` | `/api/builder` | Conversational agent-building wizard |
-| `runs.py` | `/api/runs` | Start, poll, cancel agent runs; SSE log streaming |
+| `runs.py` | `/api/runs` | Start, poll, cancel agent runs; SSE log + token streaming |
 | `tool_library.py` | `/api/tool-library` | List pre-built tools, get detail, run a tool directly |
 | `models.py` | `/api/models` | List available Ollama models |
+| `settings.py` | `/api/settings` | Read/write `storage/settings.json` (provider, API keys, temperature, max_tokens) |
 
 ### Schemas (`backend/schemas/`)
 
@@ -48,17 +51,32 @@ Environment variables (prefix `AB_`):
 - `FlowDefinition` — nodes, edges, `entry_node`
 - `AgentDefinition` — full agent: id, name, description, system_prompt, model, tools, flow, status
 
-**`run.py`** — `RunResult`, `RunLog` (with `level`), `RunRequest`
+**`run.py`** — `RunResult`, `RunLog` (with `level`), `RunRequest`, `TokenUsage`
+
+`TokenUsage` accumulates per-run: `prompt_tokens`, `completion_tokens`, `total_tokens`, `cost_usd`. `RunResult` carries `usage: TokenUsage`, `llm_calls: int`, `total_llm_latency_ms: float`, and `provider: str`.
 
 **`builder.py`** — `BuilderMessage`, `BuilderSession`, `ToolValidationResult`, `ValidateToolsResponse`, `EnhanceToolResponse`
 
 ### Services (`backend/services/`)
 
-**`OllamaService`** — async HTTP client for Ollama. Methods: `chat()` (non-streaming), `chat_stream()` (async generator), `list_models()`. Timeout: 600s read.
+**`LLMService`** — unified async LLM client. Reads provider config from `settings_service.load()` on every call. Methods:
+- `chat(**kwargs) -> ChatResult` — single-turn non-streaming call
+- `chat_stream(**kwargs) -> AsyncGenerator[(chunk, Optional[ChatResult])]` — yields text chunks; final item carries the completed `ChatResult` with token counts, cost, and latency
+
+`ChatResult` dataclass: `content: str`, `prompt_tokens: int`, `completion_tokens: int`, `cost_usd: float`, `latency_ms: float`.
+
+Provider routing:
+- **Ollama** — httpx, passes `temperature` + `num_predict` in `options`; token counts from `prompt_eval_count` / `eval_count`
+- **OpenAI** — httpx REST with `stream_options: {include_usage: true}` so streaming calls still return token counts
+- **Anthropic** — `anthropic.AsyncAnthropic` SDK with `.messages.stream()`; client instance cached by `(api_key, base_url)` pair
+
+**`llm_pricing.py`** — `PRICING` dict of `{provider: {model: (input_per_M, output_per_M)}}`. `compute_cost(provider, model, prompt_tokens, completion_tokens) -> float` with prefix-match fallback for versioned model names (e.g. `claude-sonnet-4-6-20250101`).
+
+**`settings_service.py`** — shared reader/writer for `storage/settings.json`. `load() -> dict`, `save(data) -> None`, `DEFAULTS` dict. Read fresh on every LLM call so UI changes take effect immediately.
 
 **`AgentService`** — file-based CRUD for `AgentDefinition`. Agents stored as JSON in `storage/agents/{id}.json`. `create_full_agent(AgentDefinition)` accepts a complete definition (used by `POST /api/agents`) and auto-assigns an id if omitted — this is the entry point for programmatic agent creation, bypassing the builder wizard entirely.
 
-**`BuilderService`** — orchestrates the wizard flow. Phase handlers:
+**`BuilderService`** — orchestrates the wizard flow. Uses `LLMService` internally. Phase handlers:
 - `refine_prompt` — takes user description, returns polished system prompt
 - `suggest_tools` — returns JSON tool list, preferring pre-built tools over custom
 - `generate_tool_code` — LLM-generates Python code, self-validates with a second LLM pass + `compile()`
@@ -70,8 +88,12 @@ Environment variables (prefix `AB_`):
 **`RunnerService`** — manages run lifecycle. Runs execute as `asyncio.Task`. Key methods:
 - `_execute_run()` — walks the flow DAG node by node; `react_agent` nodes delegate to `_react_run()`
 - `_react_run()` — the ReAct loop; auto-offloads large inputs and injects memory tools before starting
+- `_stream_chat()` — calls `llm.chat_stream()`, writes chunks to `_live_streams[run_id]`, aggregates `ChatResult` into `run.usage`
 - `_call_tool(tool_name, code, input_data, agent_id)` — central dispatch: checks `NATIVE_TOOLS` first, falls back to sandbox
 - `_offload_large_inputs(input_data, agent_id)` — moves string values >2000 chars to agent memory, replaces them with a compact preview + `memory_read` instruction
+- `get_live_output(run_id) -> str` — returns current token buffer for SSE polling
+
+`_live_streams: dict[str, str]` — in-memory buffer holding the current partial LLM response per run. Cleared when the run completes.
 
 **`SandboxService`** — thin wrapper over `sandbox/executor.py`.
 
@@ -141,7 +163,7 @@ Pre-loop setup:
 Loop (up to max_iterations, default 30):
   1. build_scratchpad() — tiered rendering (full / summary / drop) with 6,000-char budget
   2. Build prompt: tool schemas + task + scratchpad
-  3. Call Ollama → raw LLM response
+  3. Call LLMService → streamed tokens (or blocking for non-streaming providers)
   4. Parse response:
      - "ACTION" → _call_tool() (native or sandbox), append observation to scratchpad
      - "FINAL"  → store react_answer in output_data, break
@@ -196,7 +218,8 @@ Next.js App Router. All pages under `frontend/src/app/`.
 - `AgentInputForm` — single textarea ("Describe what you want the agent to do"). Sends `{ task: "..." }` as input_data. Advanced toggle reveals raw JSON editor.
 - `RunLog` — live log viewer, fed by SSE from `/api/runs/{id}/stream`
 - `RunStatus` — status badge
-- `RunHistory` — table of past runs with status and timestamps
+- `RunHistory` — table of past runs with columns: Run ID, Status, Agent, Mode (ReAct/DAG/LLM chip), Steps, Tokens, Cost, Started, Duration
+- `UsageStats` — displays per-run telemetry: input tokens, output tokens, cost, LLM call count, LLM latency, provider badge. Returns null when no usage data is present.
 
 **Tool Runner** (`app/tool-runner/page.tsx`):
 - Left panel: tools grouped by category, click to select
@@ -214,10 +237,11 @@ All calls to `http://localhost:8000`. Key functions:
 - `startRun`, `getRun`, `getRuns`, `cancelRun`
 - `getToolLibrary`, `getToolDetail`, `runTool`
 - `getModels`
+- `getSettings`, `saveSettings`
 
 ### Hooks (`frontend/src/lib/hooks/`)
 - `useAgent(id)` — fetches and caches agent definition
-- `useRun(runId)` — polls run status; connects SSE stream when run is active
+- `useRun(runId)` — connects SSE stream; handles `log`, `status`, `live`, and `done` events. Returns `{ run, liveOutput, connected, error }`. `liveOutput` carries the in-progress token stream for display while a run is active.
 - `useChat(agentId)` — manages builder conversation state
 - `useModels()` — fetches available Ollama models
 
@@ -231,11 +255,16 @@ User types task → AgentInputForm → { task: "..." }
     → asyncio.Task: _execute_run()
       → walks FlowDefinition nodes
         → tool_call: sandbox subprocess → result in tool_results
-        → llm_call: Ollama chat → result in tool_results
-        → react_agent: ReAct loop (LLM + tools, up to 30 iterations)
+        → llm_call: LLMService.chat_stream() → tokens to _live_streams[run_id]
+        → react_agent: ReAct loop (LLMService + tools, up to 30 iterations)
       → _save_run() on every step
-  → frontend polls GET /api/runs/{id} or SSE /api/runs/{id}/stream
-  → RunLog component updates live
+      → ChatResult aggregated into run.usage (tokens, cost, latency)
+  → SSE /api/runs/{id}/stream (250ms poll cadence):
+      event: log    → new RunLog entry appended
+      event: status → run fields updated (usage, llm_calls, provider, …)
+      event: live   → current token stream (in-progress LLM response)
+      event: done   → final RunResult; live buffer cleared
+  → useRun hook drives RunLog + liveOutput + UsageStats components
 ```
 
 ---
@@ -262,9 +291,10 @@ storage/
   agents/
     {agent_id}.json        # AgentDefinition (includes tool code inline)
   runs/
-    {run_id}.json          # RunResult (includes all logs)
+    {run_id}.json          # RunResult (includes all logs + usage telemetry)
   memory/
     {agent_id}.json        # Persistent key-value store for memory_read/write/list
+  settings.json            # Provider config, API keys, temperature, max_tokens
 ```
 
 All persistence is synchronous file I/O via Pydantic `model_dump_json` / `model_validate_json`. No database.
@@ -304,6 +334,6 @@ See `test_react.py`, `test_react2.py`, and `test_react3.py` for working examples
 - **ReAct format compliance**: Smaller models (< 7B) may deviate from the strict `Thought/Action/Input` format. The engine retries with a correction nudge on parse failure.
 - **Model speed**: Local inference with larger models (e.g. `qwen3-vl:8b`) runs at ~60–120 seconds per LLM call on CPU. Long pipelines can take 10–20 minutes end-to-end.
 - **Sandbox is not a true VM**: The subprocess + import blocklist is defense-in-depth, not a security boundary. Do not run untrusted user-submitted tool code in production.
-- **No streaming during ReAct**: Ollama is called with `stream: False` per iteration. The frontend sees log updates between iterations (via `_save_run`) but not token-by-token within a single LLM call.
+- **Token streaming**: All LLM calls use `chat_stream()`. Tokens are buffered in `_live_streams[run_id]` and emitted as SSE `live` events every 250ms. The frontend renders the partial response live. Anthropic and OpenAI providers expose token counts through streaming; Ollama exposes them in the final chunk.
 - **Single-process**: All runs execute as `asyncio.Task` in the same FastAPI process. Heavy concurrent runs will contend.
 - **Memory is flat JSON**: The per-agent key-value store has no TTL, namespacing, or size limit. Large values stored via `memory_write` persist indefinitely until explicitly overwritten.

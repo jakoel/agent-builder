@@ -21,6 +21,19 @@ function formatDuration(started: string, completed?: string): string {
   return `${Math.floor(secs / 60)}m ${secs % 60}s`;
 }
 
+function formatTokens(n: number): string {
+  if (n === 0) return "—";
+  if (n < 1000) return `${n}`;
+  if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`;
+  return `${(n / 1_000_000).toFixed(2)}M`;
+}
+
+function formatCost(c: number): string {
+  if (c === 0) return "—";
+  if (c < 0.01) return `${(c * 100).toFixed(1)}¢`;
+  return `$${c.toFixed(c < 1 ? 3 : 2)}`;
+}
+
 function runMode(run: RunResult): "ReAct" | "DAG" | "LLM" {
   if (run.logs.some((l) => l.message.startsWith("ReAct iteration"))) return "ReAct";
   if (run.logs.length > 0 && run.logs.every((l) => l.node_id === "llm")) return "LLM";
@@ -61,6 +74,8 @@ export default function RunHistory({ runs, agentMap, hideAgentColumn }: RunHisto
             )}
             <th className="pb-2 px-4 text-xs font-medium text-slate-500 uppercase tracking-wider hidden lg:table-cell">Mode</th>
             <th className="pb-2 px-4 text-xs font-medium text-slate-500 uppercase tracking-wider hidden lg:table-cell">Steps</th>
+            <th className="pb-2 px-4 text-xs font-medium text-slate-500 uppercase tracking-wider hidden xl:table-cell">Tokens</th>
+            <th className="pb-2 px-4 text-xs font-medium text-slate-500 uppercase tracking-wider hidden xl:table-cell">Cost</th>
             <th className="pb-2 px-4 text-xs font-medium text-slate-500 uppercase tracking-wider hidden sm:table-cell">Started</th>
             <th className="pb-2 px-4 text-xs font-medium text-slate-500 uppercase tracking-wider">Duration</th>
             <th className="pb-2 w-6" />
@@ -127,6 +142,16 @@ export default function RunHistory({ runs, agentMap, hideAgentColumn }: RunHisto
                     <ScrollText size={11} />
                     {steps}
                   </span>
+                </td>
+
+                {/* Tokens */}
+                <td className="py-3 px-4 hidden xl:table-cell text-xs font-mono text-slate-500">
+                  {formatTokens(run.usage?.total_tokens ?? 0)}
+                </td>
+
+                {/* Cost */}
+                <td className="py-3 px-4 hidden xl:table-cell text-xs font-mono text-amber-400/80">
+                  {formatCost(run.usage?.cost_usd ?? 0)}
                 </td>
 
                 {/* Started */}

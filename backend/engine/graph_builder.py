@@ -10,14 +10,13 @@ from langgraph.graph import END, StateGraph
 from .state import AgentState
 from .tool_loader import load_tools
 from ..schemas.agent import AgentDefinition
-from ..services.ollama_service import OllamaService
+from ..services.llm_service import LLMService
 from ..services.sandbox_service import SandboxService
-from ..services import settings_service
 
 
 def build_graph(
     agent_def: AgentDefinition,
-    ollama_service: OllamaService,
+    llm_service: LLMService,
     sandbox_service: SandboxService,
 ) -> Any:
     """Compile a LangGraph StateGraph from the agent's flow definition.
@@ -78,14 +77,12 @@ def build_graph(
                     tool_results=json.dumps(state.get("tool_results", {})),
                 )
                 msgs = [{"role": "user", "content": prompt}]
-                cfg = settings_service.load()
-                resp = await ollama_service.chat(
+                chat_result = await llm_service.chat(
                     model=agent_def.model,
                     messages=msgs,
                     system=agent_def.system_prompt or None,
-                    temperature=cfg.get("default_temperature", 0.7),
-                    max_tokens=cfg.get("default_max_tokens", 2048),
                 )
+                resp = chat_result.content
                 messages = state.get("messages") or []
                 messages.append(resp)
                 state["messages"] = messages

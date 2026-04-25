@@ -21,7 +21,7 @@ from ..schemas.run import RunLog, RunResult
 from ..tool_library.registry import NATIVE_TOOLS, TOOL_CATALOG
 from ..tool_library.memory import memory_write
 from .agent_service import AgentService
-from .ollama_service import OllamaService
+from .llm_service import ChatResult, LLMService
 from .sandbox_service import SandboxService
 from . import settings_service
 
@@ -34,15 +34,70 @@ class RunnerService:
     def __init__(
         self,
         agent_svc: AgentService,
-        ollama: OllamaService,
+        llm: LLMService,
         sandbox: SandboxService,
     ) -> None:
         self._agent_svc = agent_svc
-        self._ollama = ollama
+        self._llm = llm
         self._sandbox = sandbox
         self._runs_dir: Path = settings.STORAGE_PATH / "runs"
         self._runs_dir.mkdir(parents=True, exist_ok=True)
         self._active_tasks: dict[str, asyncio.Task[None]] = {}
+        # In-memory live LLM output buffers keyed by run_id (cleared after each call)
+        self._live_streams: dict[str, str] = {}
+
+    # ------------------------------------------------------------------
+    # Live streaming (in-memory only)
+    # ------------------------------------------------------------------
+
+    def get_live_output(self, run_id: str) -> Optional[str]:
+        return self._live_streams.get(run_id)
+
+    def _set_live(self, run_id: str, text: str) -> None:
+        self._live_streams[run_id] = text
+
+    def _clear_live(self, run_id: str) -> None:
+        self._live_streams.pop(run_id, None)
+
+    async def _stream_chat(
+        self,
+        run_id: str,
+        result: RunResult,
+        model: str,
+        messages: list[dict[str, str]],
+        system: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+    ) -> str:
+        """Stream an LLM call: live-update _live_streams[run_id] per chunk,
+        aggregate usage into result, return full content."""
+        accumulated = ""
+        final: Optional[ChatResult] = None
+        async for chunk, maybe_final in self._llm.chat_stream(
+            model=model,
+            messages=messages,
+            system=system,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        ):
+            if chunk:
+                accumulated += chunk
+                self._set_live(run_id, accumulated)
+            if maybe_final is not None:
+                final = maybe_final
+
+        self._clear_live(run_id)
+
+        if final is not None:
+            result.usage.prompt_tokens += final.prompt_tokens
+            result.usage.completion_tokens += final.completion_tokens
+            result.usage.total_tokens += final.total_tokens
+            result.usage.cost_usd += final.cost_usd
+            result.llm_calls += 1
+            result.total_llm_latency_ms += final.latency_ms
+            result.provider = final.provider
+            return final.content
+        return accumulated
 
     # ------------------------------------------------------------------
     # Persistence helpers
@@ -177,7 +232,9 @@ class RunnerService:
                     )
                     messages.append({"role": "user", "content": prompt})
                     self._log(result, node.id, "Calling LLM")
-                    llm_resp = await self._ollama.chat(
+                    llm_resp = await self._stream_chat(
+                        run_id,
+                        result,
                         model=agent_def.model,
                         messages=messages,
                         system=agent_def.system_prompt or None,
@@ -251,7 +308,9 @@ class RunnerService:
         self._log(result, "llm", "No flow defined -- running single LLM call")
         try:
             messages = [{"role": "user", "content": json.dumps(input_data)}]
-            llm_resp = await self._ollama.chat(
+            llm_resp = await self._stream_chat(
+                result.run_id,
+                result,
                 model=agent_def.model,
                 messages=messages,
                 system=agent_def.system_prompt or None,
@@ -310,7 +369,9 @@ class RunnerService:
             self._log(result, node.id, f"ReAct iteration {iteration + 1}/{node.max_iterations}")
             self._save_run(result)
 
-            response = await self._ollama.chat(
+            response = await self._stream_chat(
+                result.run_id,
+                result,
                 model=agent_def.model,
                 messages=[{"role": "user", "content": prompt}],
                 system=REACT_SYSTEM,

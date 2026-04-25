@@ -7,6 +7,7 @@ import { getRun, getAgent } from "@/lib/api";
 import { RunResult, AgentDefinition } from "@/lib/types";
 import RunLogViewer from "@/components/runs/RunLog";
 import RunStatus from "@/components/runs/RunStatus";
+import UsageStats from "@/components/runs/UsageStats";
 import { Skeleton } from "@/components/ui/Skeleton";
 import {
   ArrowLeft,
@@ -176,6 +177,14 @@ export default function RunDetailPage() {
           </MetaItem>
         )}
       </div>
+
+      {/* Usage */}
+      <UsageStats
+        usage={run.usage}
+        llmCalls={run.llm_calls}
+        totalLatencyMs={run.total_llm_latency_ms}
+        provider={run.provider}
+      />
 
       {/* Error */}
       {run.error && (

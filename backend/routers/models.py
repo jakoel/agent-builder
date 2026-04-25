@@ -6,16 +6,16 @@ from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException
 
-from ..services.ollama_service import OllamaService
+from ..services.llm_service import LLMService
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 
-_ollama = OllamaService()
+_llm = LLMService()
 
 
 @router.get("/", response_model=List[Dict[str, Any]])
 async def list_models() -> list[dict[str, Any]]:
     try:
-        return await _ollama.list_models()
+        return await _llm.list_models()
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Ollama unavailable: {exc}")
