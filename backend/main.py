@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .routers import agents, builder, models, runs, tool_library
 from .routers import settings as settings_router
+from .routers.runs import _runner_svc
 
 
 @asynccontextmanager
@@ -17,6 +18,7 @@ async def lifespan(app: FastAPI):
     """Create required storage directories on startup."""
     (settings.STORAGE_PATH / "agents").mkdir(parents=True, exist_ok=True)
     (settings.STORAGE_PATH / "runs").mkdir(parents=True, exist_ok=True)
+    await _runner_svc.start_watchdog()
     yield
 
 

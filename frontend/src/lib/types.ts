@@ -9,9 +9,10 @@ export interface ToolDefinition {
 export interface FlowNode {
   id: string;
   label: string;
-  type: "tool_call" | "llm_call" | "condition" | "start" | "end";
+  type: "tool_call" | "llm_call" | "condition" | "start" | "end" | "react_agent";
   tool_name?: string;
   prompt_template?: string;
+  node_timeout_seconds?: number;
 }
 
 export interface FlowEdge {
@@ -68,6 +69,7 @@ export interface RunResult {
   llm_calls?: number;
   total_llm_latency_ms?: number;
   provider?: string;
+  run_timeout_seconds?: number;
 }
 
 export interface SuggestedTool {

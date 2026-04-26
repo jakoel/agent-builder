@@ -22,6 +22,7 @@ class FlowNode(BaseModel):
     tool_name: Optional[str] = None
     prompt_template: Optional[str] = None
     max_iterations: int = 30
+    node_timeout_seconds: int = 120
 
 
 class FlowEdge(BaseModel):

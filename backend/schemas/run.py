@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 class RunRequest(BaseModel):
     agent_id: str
     input_data: dict[str, Any] = Field(default_factory=dict)
+    run_timeout_seconds: int = 600
 
 
 class RunLog(BaseModel):
@@ -40,6 +41,7 @@ class RunResult(BaseModel):
     llm_calls: int = 0
     total_llm_latency_ms: float = 0.0
     provider: Optional[str] = None
+    run_timeout_seconds: int = 600
 
 
 # Alias for compatibility

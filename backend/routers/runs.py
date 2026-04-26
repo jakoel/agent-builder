@@ -26,7 +26,7 @@ _runner_svc = RunnerService(_agent_svc, _llm, _sandbox)
 @router.post("/", response_model=RunResult)
 async def start_run(body: RunRequest) -> RunResult:
     try:
-        return await _runner_svc.start_run(body.agent_id, body.input_data)
+        return await _runner_svc.start_run(body.agent_id, body.input_data, body.run_timeout_seconds)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Agent not found")
 
